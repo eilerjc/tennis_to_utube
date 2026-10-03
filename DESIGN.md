@@ -207,6 +207,10 @@ Implement now unless marked **[data only]**.
   - everything before the first Game start / Match start (warmup),
   - **changeovers**: from Game won/lost closing an odd game to the next Game start,
   - set breaks, everything after Match end.
+- Removals run exactly up to the next Game start / Set start mark; no extra pre-roll is kept
+  before it. So **mark Game start where the kept footage should begin**: a lead-in before
+  Game start would land in removed footage, so it is clamped to the start of the kept
+  segment (the link starts at the cut). Agreed with the owner.
 - Removed regions show shaded on the timeline before processing.
 - **Keyframe snapping:** kept-segment **starts snap back** to the keyframe at or before the
   requested time (≤ 1.001 s earlier with these files — keeps a little extra context, never
