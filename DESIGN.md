@@ -1,0 +1,298 @@
+# tennis_to_utube — Design
+
+A Windows desktop tool for reviewing tennis match video recorded on a GoPro Mission 1 Pro:
+mark events while watching, optionally keep score, then losslessly trim/join the footage and
+export YouTube chapters and per-event links. Primary use is **player/coaching review**
+(body language, post-shot recovery, play speed) of **whole matches** that are later uploaded
+to YouTube.
+
+This document records decisions agreed with the project owner. Items marked
+**[data only]** must exist in the file format now but need no UI yet.
+
+---
+
+## 1. Source footage (measured on real files)
+
+From `ffprobe` on `GX010008.MP4`:
+
+| Property | Value |
+|---|---|
+| Codec | HEVC (H.265), profile Main (8-bit) |
+| Pixel format | `yuvj420p` (full-range) |
+| Resolution | 3840×2160 |
+| Frame rate | `60000/1001` (59.94 fps) — frame ≈ 16.683 ms |
+| Video bitrate | ~41.2 Mbps (camera uses constant-quality, so it varies) |
+| Keyframes | every 60 frames = **1.001 s** exactly (closed/open GOP not yet checked) |
+
+A real match folder:
+
+```
+GX010008.MP4  11,698,456,599 bytes   (modified 16:52)
+GX020008.MP4  11,701,878,664 bytes   (modified 17:29)
+GX030008.MP4   2,161,484,725 bytes   (modified 17:36)
+```
+
+- Naming is `GX` + **2-digit chapter** + **4-digit recording number**. Order = sort by
+  recording number, then chapter. Plain alphabetical sort is wrong across recordings.
+  Cross-check with `creation_time` metadata; flag disagreement.
+- ~11.7 GB per full chapter ≈ 37–38 min. This match ≈ 83 min total.
+- GoPro files carry extra data tracks (telemetry); joins keep only `0:v:0` and audio.
+- Files live on a Windows PC (NTFS). The user also uses Git Bash (MINGW64).
+
+## 2. Platform and stack
+
+- **Windows first.** User PC: i9-14900K, 64 GB RAM, RTX 4060 Ti.
+- Python 3.11+, **PySide6** (Qt, LGPL), **mpv** via `python-mpv`/libmpv for playback,
+  **ffmpeg/ffprobe** for probing, cutting, joining.
+- Trim/join are **stream copy only** — never re-encode. (A burned-in scoreboard would need
+  a re-encode via NVENC; that is a future, optional feature.)
+- Core logic (event log, flow, scoring, chapters, trim planning) is pure Python with no GUI
+  dependency so it can be fully unit-tested on Linux CI/cloud.
+
+## 3. Core principles
+
+1. **Every event is an instant.** No span events are stored. Intervals (a game, a changeover)
+   are *derived* by pairing events (e.g. Game start … Game won).
+2. **The event log is the single source of truth.** Score, flow state, chapters and cut
+   proposals are all computed from it and recomputed on any edit.
+3. **Marking and processing are separate.** Marking never cuts or exports. A later pass
+   decides what to remove and what to export, and can be redone any number of times.
+4. **Time is integer milliseconds on the joined (concatenated source) timeline.** Full
+   precision is kept in the log (needed for future per-shot tracking); precision is only
+   reduced at export (YouTube uses whole seconds).
+5. **Never lose user data.** Versioned format, unknown fields preserved on load/save,
+   autosave with backup of the previous version, full undo.
+
+## 4. Match file (data format)
+
+One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
+
+```jsonc
+{
+  "format_version": 1,
+  "sources": [            // ordered; paths relative to the match file when possible
+    {"path": "GX010008.MP4", "duration_ms": 2271000, "codec": "hevc", "width": 3840,
+     "height": 2160, "fps": "60000/1001", "pix_fmt": "yuvj420p"}
+  ],
+  "match": {
+    "kind": "singles",     // or "doubles"
+    "sides": {
+      "A": {"players": ["Emma"], "role": "ours"},
+      "B": {"players": ["Sara"], "role": "opponent"}
+    }
+  },
+  "settings": {            // per-match overrides of app defaults
+    "lead_in_ms": {"default": 5000},
+    "chapter_gap_ms": 600000
+  },
+  "events": [
+    {
+      "id": "e_0001",      // stable id, never reused
+      "t_ms": 734512,
+      "type": "game_start",
+      "side": "A", "player": "Emma",   // who (server here); optional
+      "result": null,      // e.g. "A" | "B" | "unknown" for outcome events
+      "observed": null,    // [data only] what the video shows: "in"|"out"|"net"|"unclear"...
+      "called": null,      // [data only] what was ruled: "in"|"out"|"let"|"replay"|"no_call"
+      "source": "human",   // "human" | "ai" | "import"
+      "confidence": null,  // [data only] 0..1, for AI
+      "inferred": false,   // set by back-annotation, never by the user
+      "tags": [],          // free labels, e.g. "close", "bad miss"
+      "details": {},       // structured qualifiers, e.g. {"direction":"long","margin_cm":6}
+      "note": ""
+    }
+  ],
+  "youtube": {"video_id": null}
+}
+```
+
+- Names are stored and exported **exactly as typed** (usually first names).
+- Unknown top-level and per-event fields must round-trip unchanged.
+- Default when only one of `observed`/`called` is given: the other equals it.
+
+## 5. Event catalog
+
+Implement now unless marked **[data only]**.
+
+**Match structure / flow**
+- Match start, Match end
+- Set start, Set won / Set lost (by side)
+- Game start (with server), Game won / Game lost (by side)
+- Tiebreak / match-tiebreak start (normally implied by rules + score)
+- **Rules change** — carries a patch to the format; applies from its position onward
+  (e.g. "set 3 is a 10-point match tiebreak", decided on the fly)
+- **Starting state** — checkpoint setting score/server/rules/players when the video starts
+  mid-match (or anywhere). Parts may be unknown.
+- **Ending state** — final score from another source (scorebook) when video ends early;
+  marked as *entered*, not observed.
+
+**Points** (one press per point, at the end of the point)
+- Point won by A / B / **unknown** (can't see ball, can't hear call/score)
+
+**Serve** (optional finer level)
+- First serve in, fault, let, ace, double fault, second serve in. A logged serve gives the
+  exact point start time.
+
+**Shot** (optional finer level) [data only for v1 UI]
+- Winner, forced error, unforced error, out, net — point-ending shot can imply the point
+  winner (unforced error by A ⇒ point to B). Conflicts are flagged.
+- Qualifiers via tags/details: close, bad miss, long, wide, net; later shot type
+  (forehand/backhand/volley/serve), direction, numeric margin.
+
+**Coaching marks** (always available)
+- Good recovery, footwork/positioning, body language, late contact, strategy/pattern,
+  free-text note. Event list is configurable and expected to grow.
+
+**Officiating vs reality** [data only]
+- "Out but not called", "called out but looked in" are expressed as `observed` ≠ `called`.
+  Score always follows `called`. Disagreements form a reviewable list.
+
+## 6. Flow and state
+
+- State at any moment is computed by **replaying the log up to the playhead** — not from
+  "the last button pressed". Seeking back and inserting a missed event just works.
+- The GUI shows context-sensitive buttons from that state, e.g. after Game start the button
+  becomes Game won / Game lost; Set won / lost appears when the score says the set can end
+  (and is always available via a menu for retirements/odd formats). Free-standing events
+  (points, coaching marks, notes) are always available.
+- Validation produces an **issues list**: game won with no game start, unclosed game,
+  impossible score, conflicting shot/point outcome, event inside a removed region, etc.
+  Each issue jumps to its time.
+
+## 7. Scoring (optional)
+
+- Scoring may be off, or recorded at **set**, **game** or **point** level, and the level may
+  differ across the match. The engine computes whatever the recorded events allow.
+- **Formats:** ad / no-ad; standard sets with tiebreak at 6-6; pro set (to 8); short sets
+  (e.g. to 4); 10-point match tiebreak in place of a final set. Changed mid-match via
+  Rules-change events.
+- **Server tracking:** singles and **doubles from the start**. App predicts next server
+  (including tiebreak rotation and fixed doubles partner order per set); user confirms with
+  one press.
+- **Back-annotation of unknowns:** when a game (or set) closes, search all valid assignments
+  of the unknown points (or games) consistent with rules, known outcomes, event count and
+  the closing result (DP over score states):
+  - exactly one assignment → fill in, mark `inferred: true`;
+  - totals fixed but order ambiguous → score certain, individual points flagged; app can
+    jump to each for video review;
+  - no valid assignment → issue (missing/extra/wrong event).
+  Same mechanism one level up (games within a set from a known set score).
+- Display distinguishes confirmed / inferred / uncertain. Exports only state scores the
+  engine is certain of.
+
+## 8. Chapters and YouTube export
+
+- **Chapters are derived, not marked.** Anchors: Game start and Set start (plus Starting
+  state). Other events attach to the chapter they fall in.
+- **Gap rule:** if more than **10 minutes** pass with no anchor, add a chapter at the **first
+  existing event at or after** the 10-minute point; if no event exists there, add nothing.
+  Never at an arbitrary time.
+- Chapters are computed **after** trim remapping. YouTube chapter rules (as understood —
+  verify): first timestamp `0:00`, at least 3 chapters, each ≥ 10 s long. Violations are
+  merged/dropped.
+- **Per-event links:** `https://youtu.be/<VIDEO_ID>?t=<seconds>` for every event, grouped by
+  chapter, exported to a separate file (Markdown and CSV). Description gets only chapters.
+- **Lead-in:** link/chapter time = event time − lead-in (default **5 s**, configurable per
+  event type, e.g. ace 3–4 s, rally winner 8–10 s). Clamped to ≥ 0 and to the start of the
+  kept segment (never reaches into removed footage). Rounded **down** to whole seconds.
+- Video ID is pasted after upload; links regenerate from stored offsets.
+- Upload is done by the user in the browser for now (YouTube API upload is future work).
+
+## 9. Trim pass (after marking)
+
+- User picks removal rules; app lists the resulting cuts; user can untick any:
+  - everything before the first Game start / Match start (warmup),
+  - **changeovers**: from Game won/lost closing an odd game to the next Game start,
+  - set breaks, everything after Match end.
+- Removed regions show shaded on the timeline before processing.
+- **Keyframe snapping:** kept-segment **starts snap back** to the keyframe at or before the
+  requested time (≤ 1.001 s earlier with these files — keeps a little extra context, never
+  loses any). Segment ends do not need keyframes (verify end-cut accuracy in testing).
+- Process: ffmpeg concat demuxer with `inpoint`/`outpoint` per kept piece, `-c copy`,
+  `-map 0:v:0 -map 0:a?`, `-tag:v hvc1`, `-movflags +faststart`. Then **ffprobe the output**
+  and verify durations.
+- **Remap:** every event time is shifted by the cumulative removed duration before it, using
+  the *actual snapped* boundaries. Events inside removed regions are excluded from export
+  and listed as issues (never silently lost).
+
+## 10. Playback and timeline UI
+
+**Playback** (all keys remappable)
+- Speeds 0.25×, 0.5×, 1×, 1.5×, 2× (maybe 4× for scanning); list is a setting; direct keys
+  plus faster/slower.
+- Skip back/forward 5 s and 1 s (distances configurable); jump to previous/next event.
+- Frame step forward and back with hold-to-repeat. (Back-stepping long-GOP HEVC is slower;
+  verify feel on real footage.)
+- **Reaction offset:** marks are shifted earlier by a configurable real-time delay scaled by
+  playback speed. Marks can be nudged by single frames afterward.
+
+**Timeline**
+- **Overview bar** (whole match) + **zoomable detail strip** (seconds to minutes; scroll to
+  zoom; follow-playhead or fixed). An 83-min match across ~1800 px is ~3 s/px, hence the
+  zoom strip.
+- Shows: color-coded event ticks; derived set/game/server bands; shaded cut proposals;
+  issue markers; hover tooltip (time + nearest event).
+- **Drag = scrub only**, even when starting on an event. While dragging, fast keyframe seeks
+  (1 s granularity with these files); exact seek on release. Fallback if scrubbing is
+  choppy: a once-per-match low-res proxy for scrubbing.
+- **Moving an event requires Ctrl+drag** (modifier configurable). Original position shown as
+  a ghost; Esc cancels. Click on a tick selects + jumps, never moves.
+- Delete is a separate explicit action. **Lock** toggle freezes all events.
+- Undo for every edit; autosave with backup of previous version.
+
+## 11. Shortcuts and buttons
+
+- Every action has both a **keyboard shortcut and a clickable button**, generated from one
+  definition so they can't drift. Buttons display their current key.
+- Defaults shipped in the app; **user override file** (e.g.
+  `%APPDATA%\tennis_to_utube\shortcuts.toml`). Conflicts (duplicate keys, clashes with
+  player controls) produce warnings, app still starts.
+- Player keys reserved by default: Space (play/pause), arrows (seek), `,` `.` (frame step),
+  J/K/L-style speed control. Event key layout to be **finalized with the owner** once the
+  event list is settled.
+
+## 12. File selection and navigation
+
+- Remember the last folder; open there next time.
+- Custom browser panel (Qt's standard dialog can't do siblings): path bar, **Up**, dropdown
+  of **sibling folders**, recent folders, pinned favorites.
+- Tick files for a match; show name, duration, size, and whether codec params match the
+  first file (lossless join requires a match). App proposes order (recording number, then
+  chapter; cross-checked with `creation_time`); user reorders by drag or up/down buttons.
+- If a folder holds several recordings, propose grouping by recording number — user approves.
+- Match file stores the final order; paths relative to the match file where possible.
+
+## 13. Future (keep the format ready)
+
+- AI-generated events (`source: "ai"`, confidence) into the same log, with a review queue;
+  human corrections override but keep the AI's original. Human logs double as labeled data.
+- Burned-in scoreboard export (NVENC re-encode).
+- YouTube API upload.
+- Coaching filters across a match or season ("all close misses long on the backhand").
+- Rally/dead-time auto-detection (deferred; not needed for whole-match review).
+
+## 14. Build order
+
+1. Project skeleton, config/shortcut loading, match-file load/save (versioned, round-trip).
+2. Timeline (ms, multi-source), GoPro ordering, ffprobe wrapper.
+3. Trim planner: rules → removal intervals → keyframe-snapped kept segments → ffmpeg plan;
+   event remap; lead-in clamping.
+4. Chapters + YouTube link/description export.
+5. Flow state machine + score engine (rules, formats, singles/doubles serve rotation,
+   starting/ending state, back-annotation).
+6. GUI: file browser panel, mpv player, controls, timeline bars, event buttons, issues list,
+   trim pass screen, export screen.
+
+**Testing:** pure-Python unit tests for everything in 1–5. End-to-end trim tests on
+**synthetic video matching the real profile** (`libx265`, `60000/1001`, keyint 60,
+`yuvj420p`, 3840×2160 or scaled-down equivalent, split into GoPro-style chapter files), with
+ffprobe verifying that remapped event times land on the right frames. Score engine gets
+property-style tests: simulate matches, hide random point results, check back-annotation.
+GUI is verified by the owner on Windows.
+
+## 15. To verify / open
+
+- End-cut accuracy with stream copy on these files; whether GOPs are closed.
+- Back frame-step and scrubbing smoothness in mpv on 4K60 HEVC (owner's machine).
+- YouTube chapter rules and `t=` behavior (whole seconds) against current YouTube help.
+- Event key layout (with owner).
