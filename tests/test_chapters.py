@@ -23,14 +23,27 @@ def chapters_for(events, total, cuts=(), settings=SETTINGS):
 
 def test_anchor_titles_number_sets_and_games():
     events = [ev(0, "match_start"), ev(1, "set_start"), ev(2, "game_start", player="Emma"),
-              ev(3, "game_won"), ev(4, "game_start", player="Sara"), ev(5, "game_won"),
-              ev(6, "set_won"), ev(7, "game_start"),  # set 2 without Set start
-              ev(8, "game_won"), ev(9, "set_lost"), ev(10, "set_start"), ev(11, "game_start"),
-              ev(12, "starting_state"), ev(13, "game_start")]
+              ev(3, "game_end", result="A"), ev(4, "game_start", player="Sara"),
+              ev(5, "game_end", result="A"), ev(6, "set_end", result="A"),
+              ev(7, "game_start"),  # set 2 without Set start
+              ev(8, "game_end", result="A"), ev(9, "set_end", result="B"), ev(10, "set_start"),
+              ev(11, "game_start"),
+              ev(12, "score_state", details={"games": [4, 4]}), ev(13, "game_start"),
+              ev(14, "score_state"), ev(15, "game_start")]
     titles = anchor_titles(events)
+    # Set scores after play has started are corrections, not chapters.
     assert [titles[e.id] for e in events if e.id in titles] == [
         "Set 1", "Set 1 · Game 1 — Emma serving", "Set 1 · Game 2 — Sara serving",
-        "Set 2 · Game 1", "Set 3", "Set 3 · Game 1", "Match in progress", "Game"]
+        "Set 2 · Game 1", "Set 3", "Set 3 · Game 1", "Set 3 · Game 9", "Set 3 · Game 10"]
+
+
+def test_set_score_before_play_is_a_chapter():
+    events = [ev(0, "score_state", details={"sets": [[6, 4]], "games": [3, 2]}),
+              ev(1, "game_start", player="Sara")]
+    assert list(anchor_titles(events).values()) == [
+        "Match in progress (6–4, 3–2)", "Set 2 · Game 6 — Sara serving"]
+    unknown = [ev(0, "score_state"), ev(1, "game_start")]
+    assert list(anchor_titles(unknown).values()) == ["Match in progress", "Game"]
 
 
 def test_chapters_use_lead_in_and_output_times():

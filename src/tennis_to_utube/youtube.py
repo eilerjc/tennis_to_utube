@@ -11,7 +11,7 @@ import io
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from . import catalog
+from . import catalog, structure
 from .chapters import Chapter, chapter_for, derive_chapters, youtube_chapters
 from .config import Settings
 from .issues import Issue
@@ -42,6 +42,8 @@ def side_names(match: dict[str, Any], side: str) -> str:
 def describe(e: Event, match: dict[str, Any]) -> str:
     """One-line label, names exactly as typed."""
     text = catalog.label(e.type)
+    if e.type == catalog.SCORE_STATE and structure.score_text(e):
+        text += f" {structure.score_text(e)}"
     if e.result in ("A", "B"):
         text += f" — won by {side_names(match, e.result)}"
     elif e.result == "unknown":

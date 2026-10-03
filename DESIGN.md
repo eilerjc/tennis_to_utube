@@ -22,7 +22,8 @@ From `ffprobe` on `GX010008.MP4`:
 | Resolution | 3840×2160 |
 | Frame rate | `60000/1001` (59.94 fps) — frame ≈ 16.683 ms |
 | Video bitrate | ~41.2 Mbps (camera uses constant-quality, so it varies) |
-| Keyframes | every 60 frames = **1.001 s** exactly (closed/open GOP not yet checked) |
+| Keyframes | every 60 frames = **1.001 s** exactly; **closed GOP** (checked 2026-10-03) |
+| B-frames | **none** (`has_b_frames=0`): decode order = display order |
 
 A real match folder:
 
@@ -52,7 +53,7 @@ GX030008.MP4   2,161,484,725 bytes   (modified 17:36)
 ## 3. Core principles
 
 1. **Every event is an instant.** No span events are stored. Intervals (a game, a changeover)
-   are *derived* by pairing events (e.g. Game start … Game won).
+   are *derived* by pairing events (e.g. Game start … Game end).
 2. **The event log is the single source of truth.** Score, flow state, chapters and cut
    proposals are all computed from it and recomputed on any edit.
 3. **Marking and processing are separate.** Marking never cuts or exports. A later pass
@@ -115,36 +116,48 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
 
 ## 5. Event catalog
 
-Implement now unless marked **[data only]**.
+Implement now unless marked **[data only]**. Type ids (the event's `type` field) are in
+`code`; agreed with the owner. Outcomes use `result` = `"A"` | `"B"` | `"unknown"` — buttons
+may say "won"/"lost"/"?" but all store the same type.
 
 **Match structure / flow**
-- Match start, Match end
-- Set start, Set won / Set lost (by side)
-- Game start (with server), Game won / Game lost (by side)
-- Tiebreak / match-tiebreak start (normally implied by rules + score)
-- **Rules change** — carries a patch to the format; applies from its position onward
-  (e.g. "set 3 is a 10-point match tiebreak", decided on the fly)
-- **Starting state** — checkpoint setting score/server/rules/players when the video starts
-  mid-match (or anywhere). Parts may be unknown.
-- **Ending state** — final score from another source (scorebook) when video ends early;
-  marked as *entered*, not observed.
+- Match start `match_start`, Match end `match_end`
+- Set start `set_start`, **Set end** `set_end` (result A / B / unknown)
+- Game start `game_start` (with server in `side`/`player`), **Game end** `game_end`
+  (result A / B / unknown)
+- Tiebreak / match-tiebreak start `tiebreak_start` (normally implied by rules + score)
+- **Rules change** `rules_change` — carries a patch to the format; applies from its position
+  onward (e.g. "set 3 is a 10-point match tiebreak", decided on the fly)
+- **Set score** `score_state` — score checkpoint, allowed **at any time**, as often as needed
+  (video starts mid-match, or the user knows the real score and wants to correct it). Only
+  the known parts are entered in `details`; the rest keeps being computed from earlier
+  events, or is unknown. Defined now: `"sets": [[6, 4], ...]` (completed sets, A–B) and
+  `"games": [3, 2]` (current set, taken as between games); points, server and format come
+  with the score engine. From that point the entered score is authoritative; disagreement
+  with what earlier events add up to is an issue.
+- **Ending state** `ending_state` — final score from another source (scorebook) when video
+  ends early; marked as *entered*, not observed.
 
 **Points** (one press per point, at the end of the point)
-- Point won by A / B / **unknown** (can't see ball, can't hear call/score)
+- Point `point`, won by A / B / **unknown** (can't see ball, can't hear call/score)
 
 **Serve** (optional finer level)
-- First serve in, fault, let, ace, double fault, second serve in. A logged serve gives the
-  exact point start time.
+- First serve in `first_serve_in`, fault `fault`, let `let`, ace `ace`, double fault
+  `double_fault`, second serve in `second_serve_in`. A logged serve gives the exact point
+  start time.
 
 **Shot** (optional finer level) [data only for v1 UI]
-- Winner, forced error, unforced error, out, net — point-ending shot can imply the point
-  winner (unforced error by A ⇒ point to B). Conflicts are flagged.
+- Winner `winner`, forced error `forced_error`, unforced error `unforced_error`, out `out`,
+  net `net` — point-ending shot can imply the point winner (unforced error by A ⇒ point to
+  B). Conflicts are flagged. *(Open: keep `out`/`net` as types, or only as qualifiers on
+  errors?)*
 - Qualifiers via tags/details: close, bad miss, long, wide, net; later shot type
   (forehand/backhand/volley/serve), direction, numeric margin.
 
 **Coaching marks** (always available)
-- Good recovery, footwork/positioning, body language, late contact, strategy/pattern,
-  free-text note. Event list is configurable and expected to grow.
+- Good recovery `good_recovery`, footwork/positioning `footwork`, body language
+  `body_language`, late contact `late_contact`, strategy/pattern `strategy`, free-text note
+  `note`. Event list is configurable and expected to grow.
 
 **Officiating vs reality** [data only]
 - "Out but not called", "called out but looked in" are expressed as `observed` ≠ `called`.
@@ -155,7 +168,8 @@ Implement now unless marked **[data only]**.
 - State at any moment is computed by **replaying the log up to the playhead** — not from
   "the last button pressed". Seeking back and inserting a missed event just works.
 - The GUI shows context-sensitive buttons from that state, e.g. after Game start the button
-  becomes Game won / Game lost; Set won / lost appears when the score says the set can end
+  becomes Game won / Game lost / Game ? (all `game_end`); Set won / lost / ? appears when
+  the score says the set can end
   (and is always available via a menu for retirements/odd formats). Free-standing events
   (points, coaching marks, notes) are always available.
 - Validation produces an **issues list**: game won with no game start, unclosed game,
@@ -179,14 +193,18 @@ Implement now unless marked **[data only]**.
   - totals fixed but order ambiguous → score certain, individual points flagged; app can
     jump to each for video review;
   - no valid assignment → issue (missing/extra/wrong event).
-  Same mechanism one level up (games within a set from a known set score).
+  Same mechanism one level up (games within a set from a known set score). A **Set score**
+  checkpoint is a known state too: unknown points/games before it must lead to it (e.g.
+  unknown at 2–2, then Set score 4–2 ⇒ both games went to A).
 - Display distinguishes confirmed / inferred / uncertain. Exports only state scores the
   engine is certain of.
 
 ## 8. Chapters and YouTube export
 
-- **Chapters are derived, not marked.** Anchors: Game start and Set start (plus Starting
-  state). Other events attach to the chapter they fall in.
+- **Chapters are derived, not marked.** Anchors: Game start and Set start, plus a Set score
+  marked before any of them (video starts mid-match: "Match in progress (6–4, 3–2)"). Later
+  Set score corrections do not start chapters. Other events attach to the chapter they
+  fall in. Game titles are numbered by Game start events in the set.
 - **Gap rule:** if more than **10 minutes** pass with no anchor, add a chapter at the **first
   existing event at or after** the 10-minute point; if no event exists there, add nothing.
   Never at an arbitrary time.
@@ -205,7 +223,8 @@ Implement now unless marked **[data only]**.
 
 - User picks removal rules; app lists the resulting cuts; user can untick any:
   - everything before the first Game start / Match start (warmup),
-  - **changeovers**: from Game won/lost closing an odd game to the next Game start,
+  - **changeovers**: from the Game end closing an odd game of the set (count from a Set
+    score's games when given) to the next Game start,
   - set breaks, everything after Match end.
 - Removals run exactly up to the next Game start / Set start mark; no extra pre-roll is kept
   before it. So **mark Game start where the kept footage should begin**: a lead-in before
@@ -299,7 +318,7 @@ Implement now unless marked **[data only]**.
    event remap; lead-in clamping.
 4. Chapters + YouTube link/description export.
 5. Flow state machine + score engine (rules, formats, singles/doubles serve rotation,
-   starting/ending state, back-annotation).
+   set score/ending state, back-annotation).
 6. GUI: file browser panel, mpv player, controls, timeline bars, event buttons, issues list,
    trim pass screen, export screen.
 
@@ -313,8 +332,8 @@ GUI is verified by the owner on Windows.
 ## 15. To verify / open
 
 - ~~End-cut accuracy with stream copy~~ — resolved: ends snap to keyframes (§9).
-- Whether the camera's GOPs are closed and whether it uses B-frames: run the GOP check
-  (`probe.inspect_gop`) on a real file. If GOPs are open, lossless cuts need another plan.
+- ~~Whether the camera's GOPs are closed~~ — checked on `GX010008.MP4`: closed GOP, no
+  B-frames (§1). Lossless cuts work.
 - Back frame-step and scrubbing smoothness in mpv on 4K60 HEVC (owner's machine).
 - YouTube chapter rules and `t=` behavior (whole seconds) against current YouTube help.
 - Event key layout (with owner).

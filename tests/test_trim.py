@@ -33,16 +33,16 @@ MATCH = [
     ev(60_000, "match_start"),
     ev(62_000, "set_start"),
     ev(63_000, "game_start"),
-    ev(200_000, "game_won"),       # game 1 -> changeover
+    ev(200_000, "game_end", result="A"),       # game 1 -> changeover
     ev(290_000, "game_start"),
-    ev(400_000, "game_lost"),      # game 2 -> no changeover
+    ev(400_000, "game_end", result="B"),      # game 2 -> no changeover
     ev(410_000, "game_start"),
-    ev(500_000, "game_won"),       # game 3 -> changeover
+    ev(500_000, "game_end", result="A"),       # game 3 -> changeover
     ev(590_000, "game_start"),
-    ev(700_000, "game_won"),       # game 4
-    ev(702_000, "set_won"),        # set break
+    ev(700_000, "game_end", result="A"),       # game 4
+    ev(702_000, "set_end", result="A"),        # set break
     ev(820_000, "game_start"),     # set 2 begins without a Set start event
-    ev(900_000, "game_won"),       # set 2 game 1 -> changeover
+    ev(900_000, "game_end", result="A"),       # set 2 game 1 -> changeover
     ev(960_000, "game_start"),
     ev(1_000_000, "match_end"),
 ]
@@ -64,7 +64,7 @@ def test_propose_cuts_all_rules():
     assert cuts[4].label == "Changeover after game 1 (set 2)"
     assert all(c.enabled for c in cuts)
     # Keys are stable (rule + anchoring event) so unticked cuts can be remembered.
-    assert cuts[1].key == "changeovers:game_won@200000"
+    assert cuts[1].key == "changeovers:game_end@200000"
     assert propose_cuts(list(reversed(MATCH)), 1_100_000) == cuts
 
 
@@ -81,16 +81,16 @@ def test_warmup_starts_at_first_play_event():
     assert propose_cuts([ev(500, "note")], 9000, ["warmup"]) == []
 
 
-def test_starting_state_suspends_changeovers_until_next_set():
+def test_mid_match_start_without_games_suspends_changeovers_until_next_set():
     events = [
-        ev(0, "starting_state"),
-        ev(10_000, "game_won"),   # parity unknown
+        ev(0, "score_state"),                    # video starts mid-match, games unknown
+        ev(10_000, "game_end", result="A"),      # parity unknown
         ev(20_000, "game_start"),
-        ev(30_000, "game_won"),
-        ev(40_000, "set_won"),
+        ev(30_000, "game_end", result="B"),
+        ev(40_000, "set_end", result="A"),
         ev(50_000, "set_start"),
         ev(51_000, "game_start"),
-        ev(60_000, "game_won"),   # first game of the next set -> changeover
+        ev(60_000, "game_end", result="A"),      # first game of the next set -> changeover
         ev(70_000, "game_start"),
     ]
     cuts = propose_cuts(events, 80_000, ["changeovers", "set_breaks"])
@@ -100,8 +100,36 @@ def test_starting_state_suspends_changeovers_until_next_set():
     ]
 
 
+def test_set_score_gives_changeover_parity_immediately():
+    events = [
+        ev(0, "score_state", details={"sets": [[6, 4]], "games": [3, 2]}),
+        ev(5_000, "game_start"),                 # game 6 of set 2
+        ev(10_000, "game_end", result="A"),      # 6 games closed -> no changeover
+        ev(20_000, "game_start"),
+        ev(30_000, "game_end", result="B"),      # game 7 -> changeover
+        ev(40_000, "game_start"),
+    ]
+    cuts = propose_cuts(events, 50_000, ["changeovers"])
+    assert [(c.start_ms, c.label) for c in cuts] == [(30_000, "Changeover after game 7 (set 2)")]
+
+
+def test_set_score_corrects_the_count_mid_set():
+    events = [
+        ev(0, "game_start"),
+        ev(10_000, "game_end", result="A"),      # game 1 -> changeover
+        ev(20_000, "game_start"),
+        # a game was missed while marking; the user enters the real score 2-1
+        ev(25_000, "score_state", details={"games": [2, 1]}),
+        ev(30_000, "game_start"),
+        ev(40_000, "game_end", result="A"),      # game 4 -> no changeover (would be 3 without)
+        ev(50_000, "game_start"),
+    ]
+    cuts = propose_cuts(events, 60_000, ["changeovers"])
+    assert [c.start_ms for c in cuts] == [10_000]
+
+
 def test_cut_without_following_game_start_is_not_proposed():
-    assert propose_cuts([ev(0, "game_start"), ev(10, "game_won")], 100, ["changeovers"]) == []
+    assert propose_cuts([ev(0, "game_start"), ev(10, "game_end", result="A")], 100, ["changeovers"]) == []
 
 
 # -- planning ----------------------------------------------------------------------
@@ -204,12 +232,12 @@ def test_irregular_keyframes():
 def test_remap_events_and_issues():
     tl = Timeline((60_000,))
     plan = plan_trim(tl, [cut(10_000, 20_000)], kfs(60_000))
-    events = [ev(9_000, "point"), ev(10_005, "game_won"), ev(15_000, "note"),
+    events = [ev(9_000, "point"), ev(10_005, "game_end", result="A"), ev(15_000, "note"),
               ev(19_019, "game_start"), ev(25_000, "ace"), ev(60_000, "match_end"),
               ev(70_000, "note")]
     kept, issues = remap_events(events, plan)
     assert [(r.event.type, r.out_ms, r.segment_out_ms) for r in kept] == [
-        ("point", 9_000, 0), ("game_won", 10_005, 0), ("game_start", 10_010, 10_010),
+        ("point", 9_000, 0), ("game_end", 10_005, 0), ("game_start", 10_010, 10_010),
         ("ace", 10_010 + 5_981, 10_010), ("match_end", 50_991, 10_010)]
     assert [(i.code, i.event_id) for i in issues] == [
         ("event_in_removed_region", "note@15000"), ("event_outside_video", "note@70000")]

@@ -10,18 +10,19 @@ from __future__ import annotations
 MATCH_START = "match_start"
 MATCH_END = "match_end"
 SET_START = "set_start"
-SET_WON = "set_won"
-SET_LOST = "set_lost"
+SET_END = "set_end"  # result: "A" | "B" | "unknown"
 GAME_START = "game_start"
-GAME_WON = "game_won"
-GAME_LOST = "game_lost"
+GAME_END = "game_end"  # result: "A" | "B" | "unknown"
 TIEBREAK_START = "tiebreak_start"
 RULES_CHANGE = "rules_change"
-STARTING_STATE = "starting_state"
-ENDING_STATE = "ending_state"
+# Score checkpoint, allowed at any time. details holds only the known parts:
+#   "sets": [[6, 4], ...]  completed sets (A, B); "games": [3, 2]  games in the current set
+# (points, server and format come with the score engine).
+SCORE_STATE = "score_state"
+ENDING_STATE = "ending_state"  # final score from another source (scorebook), entered
 
-# Points (result: "A" | "B" | "unknown")
-POINT = "point"
+# Points
+POINT = "point"  # result: "A" | "B" | "unknown"
 
 # Serve
 FIRST_SERVE_IN = "first_serve_in"
@@ -50,14 +51,12 @@ LABELS: dict[str, str] = {
     MATCH_START: "Match start",
     MATCH_END: "Match end",
     SET_START: "Set start",
-    SET_WON: "Set won",
-    SET_LOST: "Set lost",
+    SET_END: "Set end",
     GAME_START: "Game start",
-    GAME_WON: "Game won",
-    GAME_LOST: "Game lost",
+    GAME_END: "Game end",
     TIEBREAK_START: "Tiebreak start",
     RULES_CHANGE: "Rules change",
-    STARTING_STATE: "Starting state",
+    SCORE_STATE: "Set score",
     ENDING_STATE: "Ending state",
     POINT: "Point",
     FIRST_SERVE_IN: "First serve in",
@@ -79,12 +78,10 @@ LABELS: dict[str, str] = {
     NOTE: "Note",
 }
 
-GAME_END = frozenset({GAME_WON, GAME_LOST})
-SET_END = frozenset({SET_WON, SET_LOST})
 # Events after which play has begun (the warm-up rule removes footage before the first).
-PLAY_BEGINS = frozenset({MATCH_START, SET_START, GAME_START, STARTING_STATE})
-# Chapter anchors (DESIGN.md §8).
-CHAPTER_ANCHORS = frozenset({SET_START, GAME_START, STARTING_STATE})
+PLAY_BEGINS = frozenset({MATCH_START, SET_START, GAME_START, SCORE_STATE})
+# Chapter anchors (DESIGN.md §8). A Set score is one only before any Set/Game start.
+CHAPTER_ANCHORS = frozenset({SET_START, GAME_START, SCORE_STATE})
 
 
 def label(event_type: str) -> str:

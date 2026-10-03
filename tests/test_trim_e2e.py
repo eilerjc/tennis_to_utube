@@ -33,15 +33,15 @@ EVENTS = [  # (joined ms, type, fields)
     (2_500, "match_start", {}),
     (3_000, "game_start", {"player": "Emma"}),
     (8_000, "point", {"result": "A"}),
-    (11_000, "game_won", {"side": "A"}),              # game 1 -> changeover
+    (11_000, "game_end", {"result": "A"}),              # game 1 -> changeover
     (14_000, "good_recovery", {}),                    # removed (changeover)
     (17_508, "game_start", {"player": "Sara"}),
     (19_900, "ace", {}),
     (20_860, "note", {"note": "just after the file boundary"}),
-    (26_500, "game_lost", {"side": "A"}),             # game 2 -> no cut
+    (26_500, "game_end", {"result": "B"}),             # game 2 -> no cut
     (27_200, "game_start", {"player": "Emma"}),
     (30_123, "point", {"result": "B"}),
-    (39_000, "game_won", {"side": "A"}),              # game 3 -> changeover across files 2/3
+    (39_000, "game_end", {"result": "A"}),              # game 3 -> changeover across files 2/3
     (40_500, "note", {"note": "between games"}),      # removed (changeover)
     (45_000, "game_start", {"player": "Sara"}),
     (47_321, "body_language", {}),

@@ -72,11 +72,11 @@ def _next(events: Sequence[Event], i: int, types: frozenset[str]) -> Event | Non
 def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = RULES) -> list[Cut]:
     """Cuts suggested by the chosen rules, sorted by start time.
 
-    * warmup: from 0 to the first Match/Set/Game start or Starting state.
-    * changeovers: from the Game won/lost that closes an odd game of a set to the next
-      Game start (game parity from :mod:`structure`; unknown after a Starting state
-      until the next set, so none are proposed there).
-    * set_breaks: from Set won/lost to the next Set or Game start.
+    * warmup: from 0 to the first Match/Set/Game start or Set score.
+    * changeovers: from the Game end that closes an odd game of a set to the next Game
+      start (game parity from :mod:`structure`; while it is unknown, e.g. the video
+      starts mid-match without a Set score giving the games, none are proposed).
+    * set_breaks: from Set end to the next Set or Game start.
     * after_match: from Match end to the end of the video.
     """
     rules = set(rules)
@@ -98,12 +98,12 @@ def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = 
 
     for i, (e, pos) in enumerate(structure.walk(evs)):
         set_txt = f" (set {pos.set_no})" if pos.set_no else ""
-        if e.type in catalog.GAME_END and "changeovers" in rules:
+        if e.type == catalog.GAME_END and "changeovers" in rules:
             nxt = _next(evs, i, frozenset({catalog.GAME_START}))
             if pos.games_closed is not None and pos.games_closed % 2 == 1 and nxt is not None:
                 add("changeovers", e, e.t_ms, nxt.t_ms,
                     f"Changeover after game {pos.games_closed}{set_txt}")
-        elif e.type in catalog.SET_END and "set_breaks" in rules:
+        elif e.type == catalog.SET_END and "set_breaks" in rules:
             nxt = _next(evs, i, frozenset({catalog.SET_START, catalog.GAME_START}))
             if nxt is not None:
                 add("set_breaks", e, e.t_ms, nxt.t_ms,
