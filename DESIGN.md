@@ -102,12 +102,15 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
       "note": ""
     }
   ],
-  "youtube": {"video_id": null}
+  "youtube": {"video_id": null},
+  "next_event_seq": 2      // next id number; ids are never reused, even after deletes
 }
 ```
 
 - Names are stored and exported **exactly as typed** (usually first names).
 - Unknown top-level and per-event fields must round-trip unchanged.
+- A file with a newer `format_version` than the app knows is refused (never downgraded).
+  Saving is atomic; the previous file is kept as `<name>.bak`.
 - Default when only one of `observed`/`called` is given: the other equals it.
 
 ## 5. Event catalog
@@ -207,10 +210,23 @@ Implement now unless marked **[data only]**.
 - Removed regions show shaded on the timeline before processing.
 - **Keyframe snapping:** kept-segment **starts snap back** to the keyframe at or before the
   requested time (≤ 1.001 s earlier with these files — keeps a little extra context, never
-  loses any). Segment ends do not need keyframes (verify end-cut accuracy in testing).
-- Process: ffmpeg concat demuxer with `inpoint`/`outpoint` per kept piece, `-c copy`,
-  `-map 0:v:0 -map 0:a?`, `-tag:v hvc1`, `-movflags +faststart`. Then **ffprobe the output**
-  and verify durations.
+  loses any). Kept-segment **ends snap forward** to the first keyframe after the requested
+  time (≤ 1.001 s later), and the piece is cut at that keyframe's *decode* time.
+  *Why (measured on synthetic HEVC with B-frames):* the concat demuxer's `outpoint` compares
+  decode timestamps, so an end at an arbitrary time drops some frames shown before the cut,
+  keeps some shown after it, and collides with the next piece's timestamps. Cutting just
+  before a keyframe in decode order keeps exactly the frames shown before it.
+- **Closed GOPs required.** With open GOPs the frames decoded after a keyframe but shown
+  before it reference the previous GOP and come out broken after every cut. The GOP structure
+  is checked before cutting and open-GOP footage is refused.
+- Process: ffmpeg concat demuxer with `inpoint` (keyframe), `outpoint` (keyframe decode
+  time) and `duration` (shown span) per kept piece, `-c copy`, `-map 0:v:0 -map 0:a?`,
+  `-tag:v hvc1`, `-movflags +faststart`. Then **ffprobe the output** and verify durations.
+  The MP4 muxer may start the video a few ms after 0 (audio begins slightly before the
+  first keyframe); that offset is measured from the output and added to remapped times.
+- Where two files join, the next file's first AAC packet (encoder priming) overlaps the
+  previous file's tail by a few ms and ffmpeg nudges that one audio packet; video is not
+  affected. Reported as info.
 - **Remap:** every event time is shifted by the cumulative removed duration before it, using
   the *actual snapped* boundaries. Events inside removed regions are excluded from export
   and listed as issues (never silently lost).
@@ -292,7 +308,9 @@ GUI is verified by the owner on Windows.
 
 ## 15. To verify / open
 
-- End-cut accuracy with stream copy on these files; whether GOPs are closed.
+- ~~End-cut accuracy with stream copy~~ — resolved: ends snap to keyframes (§9).
+- Whether the camera's GOPs are closed and whether it uses B-frames: run the GOP check
+  (`probe.inspect_gop`) on a real file. If GOPs are open, lossless cuts need another plan.
 - Back frame-step and scrubbing smoothness in mpv on 4K60 HEVC (owner's machine).
 - YouTube chapter rules and `t=` behavior (whole seconds) against current YouTube help.
 - Event key layout (with owner).

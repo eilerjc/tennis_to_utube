@@ -13,13 +13,16 @@ update `DESIGN.md` in the same change.
 - Never re-encode video for trim/join. Stream copy only.
 - Commit in small steps on feature branches and push often; open PRs into `main`.
 
-## Layout (planned)
+## Layout
 
-- `src/tennis_to_utube/` — package. Core modules (no Qt imports): `matchfile`, `timeline`,
-  `sources`, `trim`, `chapters`, `flow`, `scoring`, `config`. GUI under `gui/`.
+- `src/tennis_to_utube/` — package. Core modules (no Qt imports): `config`, `matchfile`,
+  `catalog` (event type ids), `issues`, `timeline`, `sources` (GoPro ordering), `probe`
+  (ffprobe wrapper), `trim`, `structure` (set/game counting until `flow` exists),
+  `chapters`, `youtube` (export); planned: `flow`, `scoring`. GUI under `gui/`.
 - `tests/` — pytest. Synthetic-video tests generate small HEVC files with ffmpeg that
   mimic the real camera profile (59.94 fps, keyframe every 60 frames, `yuvj420p`).
 
 ## Commands
 
-- Tests: `python -m pytest`
+- Tests: `python -m pytest` (tests marked `ffmpeg` are skipped if ffmpeg/ffprobe with
+  libx265 is not on PATH).
