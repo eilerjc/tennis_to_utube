@@ -14,11 +14,13 @@ from fractions import Fraction
 import pytest
 
 from synth import FRAME_MS, frame_at, make_clip, read_frames
+from tennis_to_utube.config import effective_settings, load_config
 from tennis_to_utube.matchfile import MatchFile
 from tennis_to_utube.probe import ProbeKeyframes, probe
 from tennis_to_utube.sources import check_join_compatible, make_source, order_files
 from tennis_to_utube.timeline import Timeline
 from tennis_to_utube.trim import Cut, TrimError, plan_trim, propose_cuts, remap_events, run_trim
+from tennis_to_utube.youtube import build_export
 
 pytestmark = pytest.mark.ffmpeg
 
@@ -166,6 +168,24 @@ def test_audio_kept_alongside(trimmed):
                           "stream=duration", "-of", "csv=p=0", str(out)],
                          capture_output=True, text=True, check=True).stdout.strip()
     assert abs(float(dur) * 1000 - trimmed["result"].plan.total_out_ms) < 100
+
+
+def test_export_from_trimmed_video(trimmed):
+    mf, plan = trimmed["mf"], trimmed["result"].plan
+    settings = effective_settings(load_config(None), {"lead_in_ms": {"default": 5000, "ace": 3000}})
+    export = build_export(mf, plan, settings)
+    # The video is ~22.7 s with game starts at ~0.4 s, 8.5 s, 18.3 s (output): too close
+    # together for YouTube's 10 s rule, so they merge and fewer than 3 chapters remain.
+    assert export.chapters == [] and export.description == ""
+    assert [i.code for i in export.issues] == ["event_in_removed_region"] * 3 + ["too_few_chapters"]
+    rows = {r.event.id: r for r in export.links}
+    ace = next(e for e in mf.events if e.type == "ace")
+    # 3 s before the ace is in removed footage: clamped to its segment's start (9.048 s)
+    seg_start = plan.output_start_ms + plan.segment_at(ace.t_ms).out_start_ms
+    assert plan.remap(ace.t_ms) - 3000 < seg_start
+    assert rows[ace.id].seconds == seg_start // 1000 == 9
+    first_game = next(e for e in mf.events if e.type == "game_start")
+    assert rows[first_game.id].seconds == 0  # lead-in clamped to the start of the video
 
 
 def test_open_gop_footage_is_refused(tmp_path):

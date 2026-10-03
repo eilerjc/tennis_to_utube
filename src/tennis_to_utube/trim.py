@@ -31,7 +31,7 @@ from typing import Iterable, Protocol, Sequence
 from . import catalog, structure
 from .issues import Issue
 from .matchfile import Event
-from .probe import Keyframe, MediaInfo, Tools, ToolError, inspect_gop, probe, run
+from .probe import Keyframe, MediaInfo, Tools, inspect_gop, probe, run
 from .timeline import Interval, Timeline, complement, merge_intervals
 
 RULES = ("warmup", "changeovers", "set_breaks", "after_match")
