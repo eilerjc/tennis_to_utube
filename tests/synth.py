@@ -45,7 +45,7 @@ def make_clip(path: Path, frames: int, first_index: int = 0, *, open_gop: bool =
     cmd += ["-map", "0:v", "-map", "1:a"] + (["-map", "2:s"] if data_track else [])
     cmd += ["-vf", barcode, "-frames:v", str(frames),
             "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", x265, "-tag:v", "hvc1",
-            "-c:a", "aac", "-shortest"]
+            "-c:a", "aac", "-t", f"{float(frames / FPS):.6f}"]
     if data_track:
         cmd += ["-c:s", "mov_text"]
     subprocess.run(cmd + [str(path)], check=True)
