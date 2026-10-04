@@ -163,7 +163,7 @@ class ScoreStateDialog(_Form):
     """Set score: only the parts the user knows. Scores are typed as on a scoreboard."""
 
     def __init__(self, match: dict[str, Any], in_tiebreak: bool = False,
-                 parent: QWidget | None = None):
+                 parent: QWidget | None = None, server: str | None = None):
         super().__init__("Set score", parent)
         self.in_tiebreak = in_tiebreak
         self.sets = QLineEdit()
@@ -177,6 +177,8 @@ class ScoreStateDialog(_Form):
         for side in "AB":
             for n in names.players(match, side):
                 self.server.addItem(n, n)
+        if server is not None and self.server.findData(server) >= 0:
+            self.server.setCurrentIndex(self.server.findData(server))  # who serves now
         self.no_sets = QCheckBox("No completed sets yet (first set)")
         self.form.addRow("Sets", self.sets)
         self.form.addRow("", self.no_sets)

@@ -333,6 +333,22 @@ class Session:
             fields["result"] = shot_point_winner(shot, hitter)
         return self.update(event_id, **fields)
 
+    def server_player_at(self, t_ms: int) -> str | None:
+        """Name of who serves at ``t_ms`` (the game in progress, or the next game between
+        games); None if not known."""
+        flow = self.flow_at(t_ms)
+        match = self.mf.match
+        side = flow.score.server
+        if side is None:
+            return None
+        if match.get("kind") != "doubles":
+            return names.players(match, side)[0]
+        if not flow.in_game:
+            return flow.next_server_player
+        starts = [e for e in self.mf.events if e.type == catalog.GAME_START and e.t_ms <= t_ms]
+        start = max(starts, key=lambda e: e.t_ms) if starts else None
+        return start.player if start is not None and start.side == side else None
+
     def set_server(self, t_ms: int, player: str) -> Event:
         """Who serves at ``t_ms``: changes the Game start of the game in progress, or (between
         games, or without a Game start) records a Set score holding only the server."""

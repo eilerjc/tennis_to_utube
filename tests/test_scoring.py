@@ -541,3 +541,26 @@ def test_shots_end_the_point():
     log.t += 1_000
     log("point", result="A")  # right after a shot-ended point: possible duplicate
     assert "possible_duplicate_point" in [i.code for i in analyze(log.events, STD).issues]
+
+
+def test_match_start_sets_everything_to_zero_and_known():
+    log = Log()
+    log("score_state", details={"games": [3, 2]})  # before anything: the video starts mid-match
+    _, view = final(log.events)
+    assert view.games == (3, 2) and view.sets is None  # sets not given: unknown
+    log = Log()
+    log("score_state", details={"server": "B"})  # only the server (Set server…)
+    log("match_start")
+    _, view = final(log.events)
+    assert (view.sets, view.games, view.points, view.server) == ((), (0, 0), (0, 0), "B")
+    log("score_state", details={"games": [3, 2]})  # after Match start the rest stays known
+    _, view = final(log.events)
+    assert view.sets == () and view.games == (3, 2) and view.certain
+
+
+def test_server_only_set_score_keeps_the_score():
+    log = Log()
+    log("score_state", details={"server": "A"})
+    log.points("ab")
+    _, view = final(log.events)
+    assert (view.sets, view.games, view.points, view.server) == ((), (0, 0), (1, 1), "A")

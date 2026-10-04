@@ -452,8 +452,10 @@ class MarkPage(QWidget):
     def mark_score_state(self) -> None:
         if self.session is None:
             return
-        view = self.session.flow_at(self.position()).score
-        details = self.ask_details(ScoreStateDialog(self.session.mf.match, bool(view.in_tiebreak), self))
+        t = self.position()
+        view = self.session.flow_at(t).score
+        details = self.ask_details(ScoreStateDialog(self.session.mf.match, bool(view.in_tiebreak), self,
+                                                    server=self.session.server_player_at(t)))
         if details:
             self.mark("score_state", details=details)
 

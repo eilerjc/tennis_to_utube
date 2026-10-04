@@ -282,3 +282,29 @@ def test_set_server_button(window):
     page.ask_server = lambda options: None  # Esc: nothing changes
     page.buttons.buttons["set_server"].click()
     assert page.session.event(start).side == "B"
+
+
+def test_set_score_dialog_shows_the_current_server(window):
+    page = window.mark
+    players = [page.session.mf.match["sides"][s]["players"][0] for s in "AB"]
+    page.ask_server = lambda options: options[1]
+    page.player.seek(10_000)
+    page.buttons.buttons["set_server"].click()
+    seen = []
+
+    def ask(dialog):
+        seen.append(dialog.server.currentData())
+        return None
+
+    page.ask_details = ask
+    page.player.seek(11_000)
+    page.actions["score_state"].trigger()
+    assert seen == [players[1]]
+
+
+def test_match_start_button_starts_at_zero(window):
+    page = window.mark
+    page.player.seek(500)
+    page.buttons.buttons["match_start"].click()
+    flow = page.session.flow_at(600)
+    assert (flow.score.sets, flow.score.games, flow.score.points) == ((), (0, 0), (0, 0))

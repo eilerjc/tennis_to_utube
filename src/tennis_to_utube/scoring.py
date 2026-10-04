@@ -297,7 +297,10 @@ def _fits(s: State, cp: Checkpoint) -> bool:
 
 
 def _apply_checkpoint(s: State, cp: Checkpoint, tracking: bool) -> State:
-    """Given parts replace the state's; others are kept, or unknown before any scoring."""
+    """Given parts replace the state's; others are kept, or unknown before any scoring.
+    Only a server given (e.g. Set server…): just the server changes."""
+    if cp.server is not None and cp.sets is None and cp.games is None and cp.points is None:
+        return replace(s, server=cp.server)  # (an empty Set score still means "unknown")
     if cp.sets is not None:
         keep_detail = s.sets is not None and _sets_match(cp.sets, s.sets)
         sets = s.sets if keep_detail else cp.sets
@@ -362,8 +365,8 @@ def _classify(events: Sequence[Event], match: dict[str, Any] | None) -> list[_In
         out.append(_Info(kind, tracking, side, cp))
         if kind == POINT_END:
             faults = 0
-        if kind == POINT_END or e.type in (catalog.GAME_END, catalog.SET_END):
-            tracking = True
+        if kind == POINT_END or e.type in (catalog.GAME_END, catalog.SET_END, catalog.MATCH_START):
+            tracking = True  # (Match start: the score is known from here, 0-0)
     return out
 
 
@@ -450,6 +453,9 @@ def _moves(s: State, e: Event, info: _Info, forced: bool) -> list[tuple[State, s
 
     if t == catalog.SET_START:
         return [(replace(s, pending_game=None, pending_set=None), None)]
+
+    if t == catalog.MATCH_START:  # everything 0-0 (a server already chosen is kept)
+        return [(State(s.fmt, server=s.server), None)]
 
     return [(s, None)]
 

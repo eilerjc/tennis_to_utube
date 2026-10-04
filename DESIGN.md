@@ -134,7 +134,8 @@ Implement now unless marked **[data only]**. Type ids (the event's `type` field)
 may say "won"/"lost"/"?" but all store the same type.
 
 **Match structure / flow**
-- Match start `match_start`, Match end `match_end`
+- Match start `match_start` (sets the score to 0-0 sets, 0-0 games, 0-0 points, keeping a
+  server already chosen; the score is known from there), Match end `match_end`
 - Set start `set_start`, **Set end** `set_end` (result A / B / unknown)
 - Game start `game_start` (with server in `side`/`player`), **Game end** `game_end`
   (result A / B / unknown)
@@ -152,7 +153,10 @@ may say "won"/"lost"/"?" but all store the same type.
   [3, 2]` (current set; without points, taken as between games), `"points": [2, 3]` (counts;
   the user types "30-40", "AD-40", "deuce", or "5-3" in a tiebreak), `"server"` (a name or a
   side). From that point the entered score is authoritative; disagreement with what earlier
-  events add up to is an issue. A Set score before anything was scored cannot conflict.
+  events add up to is an issue. A Set score before anything was scored (or Match start)
+  cannot conflict, and parts it leaves out are unknown — except a Set score holding only the
+  server (Set server…), which changes just the server. The dialog opens with the current
+  server selected.
 - **Ending state** `ending_state` — final score from another source (scorebook) when video
   ends early; marked as *entered*, not observed. Same `sets` format (tiebreak points kept).
 
