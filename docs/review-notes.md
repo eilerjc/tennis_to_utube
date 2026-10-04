@@ -45,7 +45,8 @@
   (never overwrites).
 - Creation-time order problems are only shown as a tooltip on "Create match" (not blocking).
 - Remembered folders (last, recent ×10, pinned) live in `%APPDATA%\tennis_to_utube\state.json`.
-- Window minimum size 1280×800; it opens maximized. Qt scales for 4K automatically.
+- Window minimum size 1280×800. It opens as a normal window (not maximized): where you left
+  it last time, or 1920×1200 centred the first time. Qt scales for 4K automatically.
 - `run.bat` creates `.venv` on first run and installs `.[gui]` (PySide6 + python-mpv).
 
 ## GUI step 2 — Player

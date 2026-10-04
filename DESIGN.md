@@ -327,7 +327,8 @@ may say "won"/"lost"/"?" but all store the same type.
 ## 10. Playback and timeline UI
 
 **Window** (agreed): works on a 1920×1200 screen or larger (the owner's is 3840×2160; Qt
-scales). Steps along the top: **1 Files → 2 Mark → 3 Trim → 4 Export**. Mark layout:
+scales). Opens as a normal window, **not maximized** (owner's choice): last size and place
+(kept in state.json), or 1920×1200 centred the first time. Steps along the top: **1 Files → 2 Mark → 3 Trim → 4 Export**. Mark layout:
 
 ```
 ┌──────────────────────────────────────────┬────────────────────┐

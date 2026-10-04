@@ -28,5 +28,6 @@ def main(argv: list[str] | None = None) -> int:
         window.files.go_to(target)
     elif state.last_folder and Path(state.last_folder).is_dir():
         window.files.go_to(state.last_folder)
-    window.showMaximized()
+    window.place_window()
+    window.show()  # not maximized (owner's choice); size and place are remembered
     return app.exec()

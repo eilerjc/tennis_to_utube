@@ -49,3 +49,10 @@ def _no_server_menu(request, monkeypatch):
         from tennis_to_utube.gui.mark_page import MarkPage
 
         monkeypatch.setattr(MarkPage, "ask_server", lambda self, players: players[0] if players else None)
+
+
+@pytest.fixture(autouse=True)
+def _private_config_dir(tmp_path_factory, monkeypatch):
+    """Tests never write the real user's state.json (window size, folders)."""
+    if "TENNIS_TO_UTUBE_CONFIG_DIR" not in os.environ:
+        monkeypatch.setenv("TENNIS_TO_UTUBE_CONFIG_DIR", str(tmp_path_factory.mktemp("config")))

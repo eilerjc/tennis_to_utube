@@ -152,3 +152,29 @@ def test_open_match_reports_missing_videos(qapp, window, tmp_path, monkeypatch):
     monkeypatch.setattr(QMessageBox, "warning", lambda *a: warnings.append(a[2]))
     window.files.open_match(path)
     assert "GX010001.MP4" in warnings[0] and window.match is not None
+
+
+def test_window_is_not_maximized_and_remembers_its_place(qapp, config_dir):
+    from tennis_to_utube.appstate import load_state
+    from tennis_to_utube.config import load_config
+    from tennis_to_utube.gui.main_window import MainWindow
+    from tennis_to_utube.gui.player import NullPlayer
+
+    def make():
+        return MainWindow(load_config(), load_state(),
+                          player_factory=lambda parent: NullPlayer("test", parent))
+
+    w = make()
+    w.place_window()
+    w.show()
+    assert not w.isMaximized() and w.width() >= 1280
+    w.setGeometry(40, 50, 1400, 900)
+    w.close()
+    assert load_state().extra["window"][2:] == [1400, 900]
+    w2 = make()
+    w2.place_window()
+    assert (w2.geometry().width(), w2.geometry().height()) == (1400, 900)
+    w2.state.extra["window"] = [99_999, 99_999, 1400, 900]  # off every screen: default place
+    w2.place_window()
+    assert w2.geometry().x() < 99_999
+    w2.close()

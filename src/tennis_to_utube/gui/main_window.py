@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import QRect
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QWidget
 
-from ..appstate import AppState
+from ..appstate import AppState, save_state
 from ..config import Config
 from ..matchfile import MatchFile
 from ..shortcuts import Shortcuts, default_shortcuts
@@ -17,6 +19,8 @@ from .player import create_player
 from .trim_page import TrimPage
 
 APP_TITLE = "Tennis to YouTube"
+DEFAULT_SIZE = (1920, 1200)  # first start, shrunk to fit the screen
+GEOMETRY_KEY = "window"  # state.json: [x, y, width, height] of the normal (not maximized) window
 
 
 class MainWindow(QMainWindow):
@@ -87,7 +91,33 @@ class MainWindow(QMainWindow):
         self.steps.setCurrentWidget(self.mark)
         self.mark.show_time(t_ms)
 
+    def place_window(self) -> None:
+        """Size and place the window (never maximized): where it was last time if that is
+        still on a screen, else DEFAULT_SIZE (at most 90% of the screen), centred."""
+        saved = self.state.extra.get(GEOMETRY_KEY)
+        if (isinstance(saved, list) and len(saved) == 4
+                and all(isinstance(v, int) and not isinstance(v, bool) for v in saved)):
+            rect = QRect(*saved)
+            if rect.width() > 0 and any(s.availableGeometry().intersects(rect)
+                                        for s in QGuiApplication.screens()):
+                self.setGeometry(rect)
+                return
+        screen = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
+        w = max(self.minimumWidth(), min(DEFAULT_SIZE[0], int(screen.width() * 0.9)))
+        h = max(self.minimumHeight(), min(DEFAULT_SIZE[1], int(screen.height() * 0.9)))
+        self.resize(w, h)
+        self.move(screen.center().x() - w // 2, screen.center().y() - h // 2)
+
+    def remember_geometry(self) -> None:
+        g = self.normalGeometry() if self.isMaximized() or self.isFullScreen() else self.geometry()
+        self.state.extra[GEOMETRY_KEY] = [g.x(), g.y(), g.width(), g.height()]
+        try:
+            save_state(self.state)
+        except OSError:
+            pass  # a convenience only
+
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        self.remember_geometry()
         self.files.shutdown()
         self.trim.shutdown()
         self.mark.shutdown()
