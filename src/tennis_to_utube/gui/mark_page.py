@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import catalog, matchfile, names, playback, timeline_view
-from ..config import Config
+from ..config import Config, load_trim_config
 from ..matchfile import MatchFile
 from ..session import LockedError, Session
 from ..shortcuts import ACTIONS, ACTIONS_BY_ID, Shortcuts
@@ -232,7 +232,7 @@ class MarkPage(QWidget):
 
     def load_match(self, mf: MatchFile, path: Path) -> None:
         self.save()
-        self.session = Session(mf, path, self.config)
+        self.session = Session(mf, path, self.config, load_trim_config())
         self.selected_id = None
         paths = [matchfile.resolve_source_path(s.path, path) for s in mf.sources]
         fps = mf.sources[0].fps if mf.sources else None

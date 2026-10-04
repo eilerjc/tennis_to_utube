@@ -34,10 +34,12 @@ class LockedError(RuntimeError):
 
 
 class Session:
-    def __init__(self, mf: MatchFile, path: str | Path, config: Config | None = None):
+    def __init__(self, mf: MatchFile, path: str | Path, config: Config | None = None,
+                 trim_config: Config | None = None):
         self.mf = mf
         self.path = Path(path)
         self.config = config
+        self.trim_config = trim_config  # trim.toml (None: built-in defaults)
         self.locked = False
         self.dirty = False
         self._undo: list[dict[str, Any]] = []
@@ -119,7 +121,7 @@ class Session:
     def trim_rules(self) -> list[str]:
         rules = self._trim_settings().get("rules")
         if not isinstance(rules, list):
-            rules = list(self.config.get("trim.rules")) if self.config else list(RULES)
+            rules = list(self.trim_config.get("rules")) if self.trim_config else list(RULES)
         return [r for r in rules if r in RULES]
 
     def cuts(self) -> list[Cut]:
@@ -130,7 +132,8 @@ class Session:
                                       self.analysis, self._serve_lead_in_ms())]
 
     def _serve_lead_in_ms(self) -> int:
-        return int(self.config.get("trim.serve_lead_in_ms")) if self.config else SERVE_LEAD_IN_MS
+        return (int(self.trim_config.get("serve_lead_in_ms")) if self.trim_config
+                else SERVE_LEAD_IN_MS)
 
     def set_trim_rules(self, rules: list[str]) -> None:
         self._before_edit()

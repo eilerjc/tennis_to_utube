@@ -5,6 +5,8 @@ The override file is TOML at ``<user config dir>/config.toml``
 user wants to change. Problems in it (bad TOML, wrong types, unknown keys) produce
 warnings; the app always starts with usable settings.
 
+The Trim tool has its own file, ``trim.toml`` (:func:`load_trim_config`, same rules).
+
 Per-match overrides live in the match file's ``settings`` object and are layered on
 top with :func:`effective_settings`.
 """
@@ -21,6 +23,7 @@ from typing import Any
 
 APP_NAME = "tennis_to_utube"
 CONFIG_FILENAME = "config.toml"
+TRIM_CONFIG_FILENAME = "trim.toml"
 # Overrides the user config directory (used by tests; handy for portable installs).
 ENV_CONFIG_DIR = "TENNIS_TO_UTUBE_CONFIG_DIR"
 
@@ -34,12 +37,6 @@ DEFAULTS: dict[str, Any] = {
     "lead_in_ms": {"default": 5000},
     # Add a chapter after this long without a Game/Set start (see DESIGN.md §8).
     "chapter_gap_ms": 600_000,
-    "trim": {
-        # Removal rules proposed by default in the trim pass (see trim.RULES).
-        "rules": ["warmup", "changeovers", "set_breaks", "after_match"],
-        # Tiebreak changeover cuts end this long before the serve mark that resumes play.
-        "serve_lead_in_ms": 3000,
-    },
     "scoring": {
         # Format for new matches (scoring.PRESETS): best of 3, 10-point match tiebreak.
         "default_format": "standard_mtb",
@@ -59,6 +56,19 @@ DEFAULTS: dict[str, Any] = {
         # up for reaction time.
         "reaction_offset_ms": 200,
     },
+}
+
+# trim.toml — the Trim tool (DESIGN.md §9).
+TRIM_DEFAULTS: dict[str, Any] = {
+    # Removal rules proposed by default (see trim.RULES); a match can choose its own.
+    "rules": ["warmup", "changeovers", "set_breaks", "after_match"],
+    # Tiebreak changeover cuts end this long before the serve mark that resumes play.
+    "serve_lead_in_ms": 3000,
+    # The trimmed video's links/chapters: time = event time - lead-in (per event type).
+    "lead_in_ms": {"default": 5000},
+    "chapter_gap_ms": 600_000,
+    # Made video's file name, next to the match file ({stem} = the match name).
+    "output": {"name": "{stem} trimmed.mp4"},
 }
 
 # Tables whose keys are open-ended (one entry per event type). New keys are accepted
@@ -95,10 +105,11 @@ class Config:
         return node
 
 
-def load_config(path: Path | None = None) -> Config:
+def load_config(path: Path | None = None, *, defaults: dict[str, Any] = DEFAULTS,
+                filename: str = CONFIG_FILENAME) -> Config:
     """Load defaults plus the user override file (default location if ``path`` is None)."""
-    path = path if path is not None else user_config_dir() / CONFIG_FILENAME
-    data = copy.deepcopy(DEFAULTS)
+    path = path if path is not None else user_config_dir() / filename
+    data = copy.deepcopy(defaults)
     warnings: list[str] = []
     if not path.exists():
         return Config(data, None, warnings)
@@ -109,6 +120,11 @@ def load_config(path: Path | None = None) -> Config:
         return Config(data, None, warnings)
     _merge(data, user, (), warnings, str(path))
     return Config(data, path, warnings)
+
+
+def load_trim_config(path: Path | None = None) -> Config:
+    """The Trim tool's settings: TRIM_DEFAULTS plus ``<user config dir>/trim.toml``."""
+    return load_config(path, defaults=TRIM_DEFAULTS, filename=TRIM_CONFIG_FILENAME)
 
 
 def _type_ok(default: Any, value: Any) -> bool:
