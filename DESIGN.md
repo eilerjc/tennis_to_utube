@@ -269,10 +269,11 @@ may say "won"/"lost"/"?" but all store the same type.
 ## 10. Playback and timeline UI
 
 **Playback** (all keys remappable)
-- Speeds 0.25×, 0.5×, 1×, 1.5×, 2× (maybe 4× for scanning); list is a setting; direct keys
-  plus faster/slower.
+- Speeds 0.25×, 0.5×, 1×, 1.5×, 2× (maybe 4× for scanning); list is a setting; set with
+  **buttons only** (no keys — agreed with the owner).
 - Skip back/forward 5 s and 1 s (distances configurable); jump to previous/next event.
-- Frame step forward and back with hold-to-repeat. (Back-stepping long-GOP HEVC is slower;
+- Frame step forward and back with hold-to-repeat; also the **mouse wheel over the video,
+  only while paused** (does nothing while playing). (Back-stepping long-GOP HEVC is slower;
   verify feel on real footage.)
 - **Reaction offset:** marks are shifted earlier by a configurable real-time delay scaled by
   playback speed. Marks can be nudged by single frames afterward.
@@ -296,11 +297,36 @@ may say "won"/"lost"/"?" but all store the same type.
 - Every action has both a **keyboard shortcut and a clickable button**, generated from one
   definition so they can't drift. Buttons display their current key.
 - Defaults shipped in the app; **user override file** (e.g.
-  `%APPDATA%\tennis_to_utube\shortcuts.toml`). Conflicts (duplicate keys, clashes with
-  player controls) produce warnings, app still starts.
-- Player keys reserved by default: Space (play/pause), arrows (seek), `,` `.` (frame step),
-  J/K/L-style speed control. Event key layout to be **finalized with the owner** once the
-  event list is settled.
+  `%APPDATA%\tennis_to_utube\shortcuts.toml`, `[keys]` table: `action = "Key"`, a list of
+  keys, or `""` for none). Conflicts (duplicate keys, clashes with player controls) produce
+  warnings, app still starts: a key the user binds wins over a default binding, and each key
+  ends up on exactly one action.
+- **Default layout (agreed with the owner):** US QWERTY, mouse in the right hand, so events
+  are all on the left hand in rows; the player uses Space and the arrow keys. Buttons and
+  labels show the players' names; keys are tied to sides (A = "ours"). Defined in
+  `shortcuts.py`.
+
+  | Keys | Action |
+  |---|---|
+  | `A` `S` `D` | Point: A / B / unknown |
+  | `Q` `W` `E` `R` | Serve in, Fault, Let, Ace |
+  | `G` / `Shift+G` | Game start with the predicted / the other server |
+  | `Z` `X` `C` | Game end: A / B / unknown |
+  | `Shift+Z` `Shift+X` `Shift+C` | Set end: A / B / unknown |
+  | `T` / `Shift+T` | Set start / Set score… |
+  | `1`–`6` | Good recovery, Footwork, Body language, Late contact, Strategy, Note… |
+  | — (buttons/menu) | Match start/end, Tiebreak start, Rules change, Ending state, speeds |
+  | `Space` | Play/pause |
+  | `←` `→` (`Shift`: short) | Skip back/forward 5 s (1 s) |
+  | `Ctrl+←` `Ctrl+→` | Frame back/forward (hold to repeat) |
+  | `↑` `↓` | Previous / next event |
+  | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
+  | `Alt+←` `Alt+→` | Move selected event one frame |
+  | `Delete` (or right-click) | Delete selected event |
+  | `Ctrl+L` | Lock events |
+
+  Mouse: wheel on the timeline zooms; click jumps/selects; drag scrubs; Ctrl+drag moves an
+  event; right-click an event to edit/delete.
 
 ## 12. File selection and navigation
 
@@ -348,4 +374,4 @@ GUI is verified by the owner on Windows.
   B-frames (§1). Lossless cuts work.
 - Back frame-step and scrubbing smoothness in mpv on 4K60 HEVC (owner's machine).
 - YouTube chapter rules and `t=` behavior (whole seconds) against current YouTube help.
-- Event key layout (with owner).
+- ~~Event key layout~~ — agreed (§11).
