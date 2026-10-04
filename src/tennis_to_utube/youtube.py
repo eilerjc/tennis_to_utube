@@ -19,6 +19,7 @@ from .config import Settings
 from .flow import analyze_match
 from .issues import Issue
 from .matchfile import Event, MatchFile
+from .scoring import Analysis, SetScore, set_text
 from .trim import TrimPlan, remap_events
 
 
@@ -92,11 +93,30 @@ class Export:
     description: str
     links: list[LinkRow]
     issues: list[Issue]
+    summary: str = ""  # "Emma vs Sara: 6–4, 3–6, [10–8] — Emma won"
+
+
+def match_summary(mf: MatchFile, analysis: Analysis) -> str:
+    """Players and, when known, the result: the engine's final score if it is certain,
+    else the Ending state (final score entered from the scorebook)."""
+    head = f"{names.side_name(mf.match, 'A')} vs {names.side_name(mf.match, 'B')}"
+    final = analysis.steps[-1].view if analysis.steps else None
+    if final is not None and final.winner and final.sets:
+        sets = ", ".join(set_text(s) for s in final.sets)
+        return f"{head}: {sets} — {names.side_name(mf.match, final.winner)} won"
+    ending = [e for e in mf.sorted_events() if e.type == catalog.ENDING_STATE]
+    if ending:
+        pairs = [p for p in ending[-1].details.get("sets", []) if isinstance(p, list) and len(p) == 2]
+        if pairs:
+            sets = ", ".join(set_text(SetScore(None, (a, b))) for a, b in pairs)
+            return f"{head}: {sets} (final score from the scorebook)"
+    return head
 
 
 def build_export(mf: MatchFile, plan: TrimPlan, settings: Settings) -> Export:
     remapped, issues = remap_events(mf.events, plan)
-    derived = derive_chapters(mf.events, remapped, settings, plan.total_out_ms, analyze_match(mf))
+    analysis = analyze_match(mf)
+    derived = derive_chapters(mf.events, remapped, settings, plan.total_out_ms, analysis)
     chapters, ch_issues = youtube_chapters(derived, plan.total_out_ms)
     issues += ch_issues
     grouping = chapters or derived
@@ -107,11 +127,11 @@ def build_export(mf: MatchFile, plan: TrimPlan, settings: Settings) -> Export:
         ch = chapter_for(grouping, r.out_ms)
         rows.append(LinkRow(ch.title if ch else "", seconds, r.event, describe(r.event, mf.match),
                             link_url(video_id, seconds) if video_id else None))
-    return Export(chapters, description(chapters), rows, issues)
+    return Export(chapters, description(chapters), rows, issues, match_summary(mf, analysis))
 
 
-def links_markdown(rows: Sequence[LinkRow], title: str = "Events") -> str:
-    lines = [f"# {title}", ""]
+def links_markdown(rows: Sequence[LinkRow], title: str = "Events", summary: str = "") -> str:
+    lines = [f"# {title}", ""] + ([summary, ""] if summary else [])
     current = None
     for row in rows:
         if row.chapter != current:

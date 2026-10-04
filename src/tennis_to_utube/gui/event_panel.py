@@ -48,6 +48,10 @@ class ScorePanel(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.setStyleSheet("font-size: 14pt; padding: 6px")
 
+    def setText(self, text: str) -> None:  # noqa: N802 (skip identical updates: called ~30/s)
+        if text != self.text():
+            super().setText(text)
+
     def show_flow(self, flow: Flow, match: dict[str, Any]) -> None:
         v = flow.score
         if flow.match_over:
@@ -85,6 +89,7 @@ class EventButtons(QWidget):
         super().__init__(parent)
         self.shortcuts = shortcuts
         self.buttons: dict[str, QPushButton] = {}
+        self._suggested: set[str] | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         for title, ids in BUTTON_ROWS:
@@ -111,6 +116,9 @@ class EventButtons(QWidget):
 
     def set_suggested(self, action_ids: list[str]) -> None:
         wanted = set(action_ids)
+        if wanted == self._suggested:
+            return  # called ~30/s while playing; restyling is not free
+        self._suggested = wanted
         for action_id, b in self.buttons.items():
             b.setStyleSheet(SUGGESTED_STYLE if action_id in wanted else "")
 

@@ -91,3 +91,21 @@ def test_description_lines():
 ])
 def test_parse_video_id(text, vid):
     assert parse_video_id(text) == vid
+
+
+def test_match_summary():
+    from tennis_to_utube.flow import analyze_match
+    from tennis_to_utube.youtube import match_summary
+
+    mf = match()
+    assert match_summary(mf, analyze_match(mf)) == "Emma vs Sara"
+    mf.add_event(299_000, "ending_state", details={"sets": [[6, 4], [3, 6], [1, 0]], "entered": True})
+    assert match_summary(mf, analyze_match(mf)) == (
+        "Emma vs Sara: 6–4, 3–6, 1–0 (final score from the scorebook)")
+    pro = MatchFile()
+    pro.match["format"] = {"preset": "pro_set"}
+    for t in range(8):
+        pro.add_event(t, "game_end", result="B")
+    assert match_summary(pro, analyze_match(pro)) == "Player 1 vs Player 2: 0–8 — Player 2 won"
+    md = links_markdown([], "T", "Emma vs Sara")
+    assert md.startswith("# T\n\nEmma vs Sara\n")

@@ -99,7 +99,8 @@ class ExportPage(QWidget):
                           "each event (not before the start of its part).")
         self.chapters.setPlainText(self.export.description or
                                    "(No chapters: YouTube needs at least 3 chapters of 10 s or more.)")
-        md = links_markdown(self.export.links, Path(mf.sources[0].path).stem if mf.sources else "Events")
+        md = links_markdown(self.export.links, Path(mf.sources[0].path).stem if mf.sources else "Events",
+                            self.export.summary)
         self.links.setPlainText(md)
         self.video_note.setText("" if mf.video_id else "links will have times only")
         removed = sum(i.code == "event_in_removed_region" for i in self.export.issues)
@@ -134,7 +135,8 @@ class ExportPage(QWidget):
         md_path, csv_path = links_paths(self.session.path)
         title = Path(self.session.mf.sources[0].path).stem if self.session.mf.sources else "Events"
         try:
-            md_path.write_text(links_markdown(self.export.links, title), encoding="utf-8")
+            md_path.write_text(links_markdown(self.export.links, title, self.export.summary),
+                               encoding="utf-8")
             csv_path.write_text(links_csv(self.export.links), encoding="utf-8-sig", newline="")
         except OSError as exc:
             self.message.emit(f"Could not save links: {exc}")

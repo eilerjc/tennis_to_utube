@@ -79,6 +79,8 @@ class MainWindow(QMainWindow):
             self.trim.refresh()
         if page is self.export and self.mark.session is not None:
             self.export.refresh()
+        if page is self.mark:
+            self.mark.setFocus()  # so the keys work straight away
         self.mark.save()
 
     def _show_time(self, t_ms: int) -> None:
