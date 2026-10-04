@@ -71,7 +71,7 @@ def normalize_key(text: str) -> str:
 @dataclass(frozen=True)
 class Action:
     id: str
-    label: str  # "{A}" / "{B}" are replaced by the side's player names
+    label: str  # "{A}" / "{B}": the side's short names (names.short_side_names)
     group: str  # "point" | "serve" | "game" | "set" | "coaching" | "match" | "player" | "edit"
     keys: tuple[str, ...] = ()  # default keys
     event_type: str | None = None  # event actions: the type they log ...

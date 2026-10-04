@@ -11,7 +11,7 @@ import io
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from . import catalog, structure
+from . import catalog, names, structure
 from .chapters import Chapter, chapter_for, derive_chapters, youtube_chapters
 from .config import Settings
 from .issues import Issue
@@ -34,21 +34,16 @@ def description(chapters: Sequence[Chapter]) -> str:
     return "".join(f"{timestamp(c.t_ms // 1000)} {c.title}\n" for c in chapters)
 
 
-def side_names(match: dict[str, Any], side: str) -> str:
-    players = match.get("sides", {}).get(side, {}).get("players") or []
-    return " & ".join(players) if players else f"Side {side}"
-
-
 def describe(e: Event, match: dict[str, Any]) -> str:
     """One-line label, names exactly as typed."""
     text = catalog.label(e.type)
     if e.type == catalog.SCORE_STATE and structure.score_text(e):
         text += f" {structure.score_text(e)}"
     if e.result in ("A", "B"):
-        text += f" — won by {side_names(match, e.result)}"
+        text += f" — won by {names.side_name(match, e.result)}"
     elif e.result == "unknown":
         text += " — winner unknown"
-    who = e.player or (side_names(match, e.side) if e.side in ("A", "B") else None)
+    who = e.player or (names.side_name(match, e.side) if e.side in ("A", "B") else None)
     if who and e.result is None:
         text += f" — {who}"
     if e.tags:

@@ -38,6 +38,8 @@ DEFAULTS: dict[str, Any] = {
         # Removal rules proposed by default in the trim pass (see trim.RULES).
         "rules": ["warmup", "changeovers", "set_breaks", "after_match"],
     },
+    # Short player names on buttons: first N letters of the first name + last initial.
+    "names": {"short_first_letters": 4},
     "playback": {
         "speeds": [0.25, 0.5, 1.0, 1.5, 2.0],
         "skip_short_ms": 1000,

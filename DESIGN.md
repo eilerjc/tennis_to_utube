@@ -109,6 +109,12 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
 ```
 
 - Names are stored and exported **exactly as typed** (usually first names).
+- With no names entered, players show as **Player 1** and **Player 2** (doubles: 1 & 2 on
+  side A, 3 & 4 on side B). These are display defaults, not written to the file.
+- **Short names** for buttons and tight spots: first 4 letters of the first name + last
+  initial ("Alexandra Jones" → "Alex J", "Player 1" → "Play 1"; letter count is a setting).
+  Clashes lengthen the part that differs ("Alex Sm" / "Alex Sc"). Exports and the future
+  scoreboard use **full names**.
 - Unknown top-level and per-event fields must round-trip unchanged.
 - A file with a newer `format_version` than the app knows is refused (never downgraded).
   Saving is atomic; the previous file is kept as `<name>.bak`.
@@ -343,7 +349,7 @@ may say "won"/"lost"/"?" but all store the same type.
 
 - AI-generated events (`source: "ai"`, confidence) into the same log, with a review queue;
   human corrections override but keep the AI's original. Human logs double as labeled data.
-- Burned-in scoreboard export (NVENC re-encode).
+- Burned-in scoreboard export (NVENC re-encode), showing full player names.
 - YouTube API upload.
 - Coaching filters across a match or season ("all close misses long on the backhand").
 - Rally/dead-time auto-detection (deferred; not needed for whole-match review).
