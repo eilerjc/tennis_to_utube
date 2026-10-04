@@ -61,3 +61,15 @@ Assumptions and open points to go through together. Newest at the bottom of each
 - **Unticked cuts are stored in the match file** (`settings.trim.unticked`, by cut key), and
   the chosen rules in `settings.trim.rules` — so the trim choices survive reopening.
 - Click picks a tick within 5 px; Ctrl+drag moves (refused while locked); Esc cancels.
+
+## GUI step 5 — Lists and editing
+- Events list columns: time, event, who, result (blue italic "(inferred)", red "?" when
+  uncertain), score after the event, tags/note. Click = select + jump; double-click = edit
+  (time, type, side, player, result, tags, note).
+- Issues tab title shows the count and how many need checking (warnings/errors); click jumps
+  to the event (or the time).
+- "Players & format…" button (top right): rename players — a find/replace over the match
+  file with a message saying how many places changed — and change the format/no-ad. Swapping
+  two names works. The whole change is one undo step.
+- Bug found and fixed while testing: undo did not restore player renames/format/trim choices
+  (snapshots shared nested data). Fixed with deep copies + tests.

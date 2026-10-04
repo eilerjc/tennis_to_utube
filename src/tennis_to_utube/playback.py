@@ -86,3 +86,22 @@ def clock_text(t_ms: int) -> str:
     """ "1:02:13.467" (hours always shown, ms precision)."""
     s, ms = divmod(max(0, int(t_ms)), 1000)
     return f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}.{ms:03d}"
+
+
+def parse_clock(text: str) -> int | None:
+    """ "1:02:13.467", "2:13.5", "13" → ms; None if not understood."""
+    parts = text.strip().split(":")
+    if not 1 <= len(parts) <= 3 or not all(parts):
+        return None
+    try:
+        *hm, sec = parts
+        seconds = float(sec)
+        units = [int(p) for p in hm]
+    except ValueError:
+        return None
+    if seconds < 0 or any(u < 0 for u in units) or (hm and seconds >= 60):
+        return None
+    total = 0
+    for u in units:
+        total = total * 60 + u
+    return round((total * 60 + seconds) * 1000) if hm else round(seconds * 1000)

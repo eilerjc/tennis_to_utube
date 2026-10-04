@@ -7,8 +7,8 @@ from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QHBoxLayout, QInputDialog, QLabel, QPushButton, QScrollArea,
-    QSplitter, QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QHBoxLayout, QInputDialog, QLabel, QMessageBox, QPushButton,
+    QScrollArea, QSplitter, QVBoxLayout, QWidget,
 )
 
 from .. import catalog, matchfile, names, playback, timeline_view
@@ -18,6 +18,7 @@ from ..session import LockedError, Session
 from ..shortcuts import ACTIONS, Shortcuts
 from .actions import build_actions, call, key_text
 from .event_panel import EndingStateDialog, EventButtons, RulesDialog, ScorePanel, ScoreStateDialog
+from .lists import EventDialog, ListsPanel, MatchDialog
 from .player import PlayerBase, create_player
 from .timeline_bar import TimelineBar
 
@@ -105,9 +106,14 @@ class MarkPage(QWidget):
 
         # Right: score and event buttons. Bottom: timeline and lists (later steps).
         self.score_panel = ScorePanel()
+        self.match_button = _button("Players && format…", "Rename players, change the format")
+        self.match_button.clicked.connect(lambda *_: self.edit_match())
         self.side_panel = QWidget()
         self.side_layout = QVBoxLayout(self.side_panel)
-        self.side_layout.addWidget(self.score_panel)
+        head = QHBoxLayout()
+        head.addWidget(self.score_panel, 1)
+        head.addWidget(self.match_button, 0, Qt.AlignmentFlag.AlignTop)
+        self.side_layout.addLayout(head)
         self.bottom = QWidget()
         self.bottom_layout = QVBoxLayout(self.bottom)
         self.bottom_layout.setContentsMargins(0, 0, 0, 0)
@@ -122,9 +128,14 @@ class MarkPage(QWidget):
         bar_row.addWidget(self.follow)
         bar_row.addStretch(1)
         bar_row.addWidget(hint)
+        self.lists = ListsPanel()
         self.bottom_layout.addWidget(self.overview)
         self.bottom_layout.addWidget(self.detail)
         self.bottom_layout.addLayout(bar_row)
+        self.bottom_layout.addWidget(self.lists, 1)
+        self.lists.eventActivated.connect(self.select_event)
+        self.lists.eventEditRequested.connect(self.edit_event)
+        self.lists.timeActivated.connect(lambda t: self.player.seek(t))
         for bar in (self.overview, self.detail):
             bar.seekRequested.connect(self._seek_from_bar)
             bar.eventClicked.connect(self.select_event)
@@ -144,7 +155,8 @@ class MarkPage(QWidget):
         outer = QSplitter(Qt.Orientation.Vertical)
         outer.addWidget(top)
         outer.addWidget(self.bottom)
-        outer.setStretchFactor(0, 1)
+        outer.setStretchFactor(0, 3)
+        outer.setStretchFactor(1, 1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.addWidget(outer)
@@ -230,6 +242,7 @@ class MarkPage(QWidget):
         self.player.set_paused(True)
         self.player.seek(self.session.event(event_id).t_ms)
         self._refresh_bars()
+        self.lists.select_event(event_id)
 
     def move_event(self, event_id: str, t_ms: int) -> None:
         if self.session is None:
@@ -248,6 +261,8 @@ class MarkPage(QWidget):
             bar.locked = self.session.locked
             bar.set_data(mf.events, bands, cuts, self.session.analysis.issues, total)
         self._update_window_marker()
+        self.lists.set_data(mf.events, self.session.analysis, mf.match, self.session.analysis.issues)
+        self.lists.select_event(self.selected_id)
 
     def _show_flow(self, t_ms: int) -> None:
         if self.session is None:
@@ -294,8 +309,51 @@ class MarkPage(QWidget):
         text, ok = QInputDialog.getText(self, "Note", "Note:")
         return text if ok and text.strip() else None
 
+    def run_dialog(self, dialog) -> bool:
+        return bool(dialog.exec())
+
     def ask_details(self, dialog) -> dict | None:
-        return dialog.details() if dialog.exec() else None
+        return dialog.details() if self.run_dialog(dialog) else None
+
+    def edit_event(self, event_id: str) -> None:
+        if self.session is None:
+            return
+        if self.session.locked:
+            self.message.emit("Events are locked (Lock events to unlock)")
+            return
+        e = self.session.event(event_id)
+        dialog = EventDialog(e, self.session.mf.match, self)
+        if self.run_dialog(dialog):
+            self.selected_id = event_id
+            self._edit(lambda: self.session.update(event_id, **dialog.changes()),
+                       f"Edited {catalog.label(e.type)}")
+
+    def edit_match(self) -> None:
+        if self.session is None:
+            return
+        dialog = MatchDialog(self.session.mf.match, self)
+        if not self.run_dialog(dialog):
+            return
+        renames = dialog.renames()
+        count = 0
+        with self.session.batch():  # one undo step
+            # via temporary names, so swaps (A↔B) never collide
+            temps = [(old, f"\u0000{i}") for i, (old, _) in enumerate(renames)]
+            for old, tmp in temps:
+                self.session.rename_player(old, tmp)
+            for (_, tmp), (_, new) in zip(temps, renames):
+                count += self.session.rename_player(tmp, new)
+            if dialog.format_spec() != (self.session.mf.match.get("format") or {}):
+                self.session.set_match(format=dialog.format_spec())
+        self.buttons.set_names(names.short_side_names(
+            self.session.mf.match, int(self.config.get("names.short_first_letters"))))
+        self._after_edit("Match updated")
+        if renames:
+            self.inform("Players renamed",
+                        f"Replaced {count} occurrence(s) in {self.session.path.name}.")
+
+    def inform(self, title: str, text: str) -> None:
+        QMessageBox.information(self, title, text)
 
     def mark_note(self) -> None:
         if self.session is not None and (text := self.ask_note()) is not None:

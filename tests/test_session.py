@@ -129,5 +129,10 @@ def test_cut_choices_are_stored_in_the_match(tmp_path):
     assert s.trim_rules() == ["warmup", "after_match"]
     assert [c.rule for c in s.cuts()] == ["warmup", "after_match"]
     s.undo()
+    assert s.trim_rules() == ["warmup", "changeovers", "set_breaks", "after_match"]
+    s.undo()
+    assert all(c.enabled for c in s.cuts())
+    s.redo()
+    assert [c.enabled for c in s.cuts()] == [True, False, True]
     s.set_cut_enabled(key, True)
     assert all(c.enabled for c in s.cuts())

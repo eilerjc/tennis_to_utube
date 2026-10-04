@@ -48,3 +48,13 @@ def test_neighbor_event():
 
 def test_clock_text():
     assert clock_text(3_733_467) == "1:02:13.467" and clock_text(-5) == "0:00:00.000"
+
+
+@pytest.mark.parametrize("text, ms", [
+    ("1:02:13.467", 3_733_467), ("2:13.5", 133_500), ("13", 13_000), ("0:00:00.000", 0),
+    ("1:61", None), ("x", None), ("", None), ("1::2", None), ("-1", None),
+])
+def test_parse_clock(text, ms):
+    from tennis_to_utube.playback import parse_clock
+
+    assert parse_clock(text) == ms

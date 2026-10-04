@@ -6,7 +6,9 @@ the whole match file (small), but never moves the event-id counter back, so ids 
 
 from __future__ import annotations
 
+import copy
 import dataclasses
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,7 @@ class Session:
         self._undo: list[dict[str, Any]] = []
         self._redo: list[dict[str, Any]] = []
         self._analysis: Analysis | None = None
+        self._batch = 0
 
     # -- derived state -------------------------------------------------------------
 
@@ -101,8 +104,25 @@ class Session:
 
     # -- undo ----------------------------------------------------------------------
 
+    @contextmanager
+    def batch(self):
+        """Several edits that undo as one."""
+        if self._batch == 0:
+            self._before_edit()
+        self._batch += 1
+        try:
+            yield
+        finally:
+            self._batch -= 1
+
+    def _snapshot(self) -> dict[str, Any]:
+        # deep copy: to_dict() shares nested dicts (match, settings) with the live file
+        return copy.deepcopy(self.mf.to_dict())
+
     def _before_edit(self) -> None:
-        self._undo.append(self.mf.to_dict())
+        if self._batch:
+            return
+        self._undo.append(self._snapshot())
         del self._undo[:-MAX_UNDO]
         self._redo.clear()
 
@@ -127,14 +147,14 @@ class Session:
     def undo(self) -> bool:
         if not self._undo:
             return False
-        self._redo.append(self.mf.to_dict())
+        self._redo.append(self._snapshot())
         self._restore(self._undo.pop())
         return True
 
     def redo(self) -> bool:
         if not self._redo:
             return False
-        self._undo.append(self.mf.to_dict())
+        self._undo.append(self._snapshot())
         self._restore(self._redo.pop())
         return True
 
@@ -178,11 +198,14 @@ class Session:
         return e
 
     def rename_player(self, old: str, new: str) -> int:
+        snapshot = self._snapshot()
         self._before_edit()
         try:
             count = names.rename_player(self.mf, old, new)
         except ValueError:
-            self._undo.pop()
+            self._restore(snapshot)
+            if not self._batch:
+                self._undo.pop()
             raise
         self._after_edit()
         return count
