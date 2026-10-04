@@ -9,7 +9,10 @@ from PySide6.QtWidgets import QLabel, QMainWindow, QTabWidget, QWidget
 from ..appstate import AppState
 from ..config import Config
 from ..matchfile import MatchFile
+from ..shortcuts import Shortcuts, default_shortcuts
 from .files_page import FilesPage
+from .mark_page import MarkPage
+from .player import create_player
 
 APP_TITLE = "Tennis to YouTube"
 
@@ -22,8 +25,10 @@ class Placeholder(QLabel):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, config: Config, state: AppState, parent: QWidget | None = None):
+    def __init__(self, config: Config, state: AppState, shortcuts: Shortcuts | None = None,
+                 player_factory=create_player, parent: QWidget | None = None):
         super().__init__(parent)
+        shortcuts = shortcuts or default_shortcuts()
         self.config = config
         self.state = state
         self.match: MatchFile | None = None
@@ -32,7 +37,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1280, 800)
 
         self.files = FilesPage(config, state)
-        self.mark: QWidget = Placeholder("Open or create a match on the Files step.")
+        self.mark = MarkPage(config, shortcuts, player_factory)
         self.trim: QWidget = Placeholder("Trimming comes after marking.")
         self.export: QWidget = Placeholder("Exporting comes after trimming.")
         self.steps = QTabWidget()
@@ -44,8 +49,9 @@ class MainWindow(QMainWindow):
         self._set_match_steps_enabled(False)
 
         self.files.matchReady.connect(self.open_match)
-        for w in config.warnings:
-            self.statusBar().showMessage(w, 15000)
+        warnings = config.warnings + shortcuts.warnings
+        if warnings:
+            self.statusBar().showMessage("  |  ".join(warnings), 30000)
 
     def _set_match_steps_enabled(self, enabled: bool) -> None:
         for i in (1, 2, 3):
@@ -56,8 +62,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{APP_TITLE} — {self.match_path.name}")
         self._set_match_steps_enabled(True)
         self.statusBar().showMessage(f"Opened {self.match_path}", 5000)
+        self.mark.load_match(mf, self.match_path)
         self.steps.setCurrentIndex(1)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         self.files.shutdown()
+        self.mark.shutdown()
         super().closeEvent(event)

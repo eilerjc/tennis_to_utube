@@ -26,7 +26,10 @@ def window(qapp, config_dir):
     from tennis_to_utube.config import load_config
     from tennis_to_utube.gui.main_window import MainWindow
 
-    w = MainWindow(load_config(), load_state())
+    from tennis_to_utube.gui.player import NullPlayer
+
+    w = MainWindow(load_config(), load_state(),
+                   player_factory=lambda parent: NullPlayer("test", parent))
     yield w
     w.close()
 

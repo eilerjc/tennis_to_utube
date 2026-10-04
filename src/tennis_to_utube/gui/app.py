@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from ..appstate import load_state
 from ..config import load_config
+from ..shortcuts import load_shortcuts
 from .main_window import APP_TITLE, MainWindow
 
 
@@ -18,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName(APP_TITLE)
     config = load_config()
     state = load_state()
-    window = MainWindow(config, state)
+    window = MainWindow(config, state, load_shortcuts())
     target = Path(argv[1]) if len(argv) > 1 else None
     if target is not None and target.is_file():
         window.files.go_to(target.parent)
