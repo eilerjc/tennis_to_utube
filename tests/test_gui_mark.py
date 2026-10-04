@@ -49,7 +49,7 @@ def test_player_actions_and_keys(window):
     assert page.position() == 4_004  # next frame starts at 4004.0 (frame 240)
     page.actions["skip_back"].trigger()
     assert page.position() == 0
-    assert "[←]" in page.transport.buttons["skip_back"].text()
+    assert page.transport.buttons["skip_back"].text() == "◀ 5s\n[←]"
 
 
 def test_jump_between_events(window):

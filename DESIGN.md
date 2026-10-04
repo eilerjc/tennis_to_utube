@@ -367,6 +367,8 @@ Runs from source for now: `run.bat` sets up `.venv` on first use (one-click .exe
 
 ## 11. Shortcuts and buttons
 
+Every button with a key shows it on a second line, e.g. `Play / Pause` over `[Space]`.
+
 - Every action has both a **keyboard shortcut and a clickable button**, generated from one
   definition so they can't drift. Buttons display their current key.
 - Defaults shipped in the app; **user override file** (e.g.

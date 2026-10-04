@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QHBoxLayout, QInputDialog, QLabel, QMenu, QMessageBox, QPushButton,
-    QScrollArea, QSplitter, QVBoxLayout, QWidget,
+    QScrollArea, QSizePolicy, QSplitter, QVBoxLayout, QWidget,
 )
 
 from .. import catalog, matchfile, names, playback, timeline_view
@@ -40,6 +40,7 @@ class TransportBar(QWidget):
     def __init__(self, speeds: list[float], parent: QWidget | None = None):
         super().__init__(parent)
         self.buttons: dict[str, QPushButton] = {}
+        self.labels: dict[str, str] = {}
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         for action_id, text in (("skip_back", "◀ 5s"), ("skip_back_short", "◀ 1s"),
@@ -48,6 +49,7 @@ class TransportBar(QWidget):
                                 ("skip_forward", "5s ▶")):
             b = _button(text)
             self.buttons[action_id] = b
+            self.labels[action_id] = text
             layout.addWidget(b)
         layout.addSpacing(16)
         self.speed_group = QButtonGroup(self)
@@ -57,6 +59,7 @@ class TransportBar(QWidget):
             b = _button(f"{s:g}×", "Playback speed")
             b.setCheckable(True)
             b.setFixedWidth(52)
+            b.setSizePolicy(b.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Expanding)
             self.speed_group.addButton(b)
             self.speed_buttons[s] = b
             layout.addWidget(b)
@@ -66,10 +69,10 @@ class TransportBar(QWidget):
         layout.addWidget(self.time)
 
     def show_keys(self, shortcuts: Shortcuts) -> None:
+        """Two lines per button: what it does, and its key underneath."""
         for action_id, b in self.buttons.items():
             keys = shortcuts.keys_for(action_id)
-            base = b.text().split("  [")[0]
-            b.setText(f"{base}  [{key_text(keys[0])}]" if keys else base)
+            b.setText(f"{self.labels[action_id]}\n[{key_text(keys[0])}]" if keys else self.labels[action_id])
 
     def show_speed(self, speed: float) -> None:
         for s, b in self.speed_buttons.items():
