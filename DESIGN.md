@@ -50,6 +50,23 @@ GX030008.MP4   2,161,484,725 bytes   (modified 17:36)
 - Core logic (event log, flow, scoring, chapters, trim planning) is pure Python with no GUI
   dependency so it can be fully unit-tested on Linux CI/cloud.
 
+**Separate tools, one repo** (agreed with the owner). They share the core code; the match
+file is the only thing passed between them, and each tool has its own config file in the
+user config dir:
+
+| Tool | Start | Config | Does |
+|---|---|---|---|
+| Marker (GUI) | `run.bat` | `config.toml` (playback, keys, names, scoring, full-video links) | Files → Mark → Trim → Export |
+| Trim tool | `trim.bat` / `python -m tennis_to_utube.trimtool` | `trim.toml` (what is cut, serve lead-in, the trimmed video's link lead-ins and chapter gap, output name) | makes the trimmed video; writes the trimmed video's chapters and links |
+| Stats | `stats.bat` / `python -m tennis_to_utube.stats` | — | CSV statistics (§12a) |
+| Overlay (future) | `overlay.bat` | `overlay.toml` | burned-in scoreboard (re-encode) |
+
+The Marker's **Trim** screen stays: it lists the cuts (rules and lead-ins from `trim.toml`,
+per-match choices in the match file), lets the user untick them and **runs the Trim tool**
+as a separate process to make the video (progress, Cancel). The Mark timeline keeps showing
+the cuts. The **Export** screen is for the **full recording** (its own YouTube video id);
+the trimmed video gets its own chapters and links from the Trim tool (its own video id).
+
 ## 3. Core principles
 
 1. **Every event is an instant.** No span events are stored. Intervals (a game, a changeover)
@@ -120,6 +137,9 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
   Clashes lengthen the part that differs ("Alex Sm" / "Alex Sc"). Exports and the future
   scoreboard use **full names**.
 - Unknown top-level and per-event fields must round-trip unchanged.
+- `settings.trim` holds the trim pass choices (`rules`, `unticked` cut keys); top-level
+  `output` describes the last video made (`path`, kept `segments` [start, end, output start],
+  `output_start_ms`, the `cuts` used) so export can remap event times without re-planning.
 - A file with a newer `format_version` than the app knows is refused (never downgraded).
   Saving is atomic; the previous file is kept as `<name>.bak`.
 - Default when only one of `observed`/`called` is given: the other equals it.
@@ -131,7 +151,8 @@ Implement now unless marked **[data only]**. Type ids (the event's `type` field)
 may say "won"/"lost"/"?" but all store the same type.
 
 **Match structure / flow**
-- Match start `match_start`, Match end `match_end`
+- Match start `match_start` (sets the score to 0-0 sets, 0-0 games, 0-0 points, keeping a
+  server already chosen; the score is known from there), Match end `match_end`
 - Set start `set_start`, **Set end** `set_end` (result A / B / unknown)
 - Game start `game_start` (with server in `side`/`player`), **Game end** `game_end`
   (result A / B / unknown)
@@ -144,13 +165,17 @@ may say "won"/"lost"/"?" but all store the same type.
 - **Set score** `score_state` — score checkpoint, allowed **at any time**, as often as needed
   (video starts mid-match, or the user knows the real score and wants to correct it). Only
   the known parts are entered in `details`; the rest keeps being computed from earlier
-  events, or is unknown. Parts: `"sets": [[6, 4], ...]` (completed sets, A–B), `"games":
+  events, or is unknown. Parts: `"sets": [[6, 4], [7, 6, 7, 5], [1, 0, 10, 8]]` (completed
+  sets, A–B; optional tiebreak points A–B — typed as "6-4 7-6(5) [10-8]"), `"games":
   [3, 2]` (current set; without points, taken as between games), `"points": [2, 3]` (counts;
   the user types "30-40", "AD-40", "deuce", or "5-3" in a tiebreak), `"server"` (a name or a
   side). From that point the entered score is authoritative; disagreement with what earlier
-  events add up to is an issue. A Set score before anything was scored cannot conflict.
+  events add up to is an issue. A Set score before anything was scored (or Match start)
+  cannot conflict, and parts it leaves out are unknown — except a Set score holding only the
+  server (Set server…), which changes just the server. The dialog opens with the current
+  server selected.
 - **Ending state** `ending_state` — final score from another source (scorebook) when video
-  ends early; marked as *entered*, not observed.
+  ends early; marked as *entered*, not observed. Same `sets` format (tiebreak points kept).
 
 **Points** (one press per point, at the end of the point)
 - Point `point`, won by A / B / **unknown** (can't see ball, can't hear call/score)
@@ -162,9 +187,15 @@ may say "won"/"lost"/"?" but all store the same type.
   start time. The second fault and an ace **end the point by themselves** (see §7); no Point
   press is needed after them.
 
-**Shot** (optional finer level) [data only for v1 UI]
-- Winner `winner`, forced error `forced_error`, unforced error `unforced_error` — point-ending
-  shot can imply the point winner (unforced error by A ⇒ point to B). Conflicts are flagged.
+**Shot** (optional finer level; buttons only, no keys)
+- Winner `winner`, forced error `forced_error`, unforced error `unforced_error`, one button
+  each per side (the hitter). A shot **ends the point** like an ace: winner ⇒ point to the
+  hitter, error ⇒ point to the other side.
+- **Modifier:** a shot pressed within `scoring.shot_modifier_window_ms` (default 3 s) after a
+  Point — with no serve/fault/ace/shot mark in between, and agreeing with the Point's winner
+  if one was entered — describes that Point instead (`details.shot`, `details.shot_side`;
+  sets an unknown winner; pressing again replaces it; one undo step). Otherwise it is a new
+  point-ending event.
   How a shot missed (out, net, long, wide) is a qualifier, not a type.
 - Qualifiers via tags/details: close, bad miss, out, net, long, wide; later shot type
   (forehand/backhand/volley/serve), direction, numeric margin.
@@ -207,7 +238,9 @@ may say "won"/"lost"/"?" but all store the same type.
   | `pro10` | 1 | 10 | at 10–10 | — |
   | `short_sets` | best of 3 | 4 | at 4–4 | 10-point match tiebreak |
 
-  **Ad / no-ad** is a switch on every format (`"ad": false`). Every field (`games`,
+  **Ad / no-ad** is a switch on every format (`"ad": false`). **Tiebreak changeovers**:
+  `"tiebreak_changeovers": "regular"` (default; change ends every 6 points) or `"coman"`
+  (after the 1st point, then every 4) — chosen per match, agreed with the owner. Every field (`games`,
   `tiebreak_at`, `tiebreak_points`, `final_set`, `match_tiebreak_points`, …) can be
   overridden, e.g. for other short-set variants — or the user just marks set won/lost.
 - **Points ended by a serve** (agreed with the owner): the second `fault` in a point is a
@@ -220,7 +253,12 @@ may say "won"/"lost"/"?" but all store the same type.
   fault. Logging serves stays optional — without them, Point is pressed as usual.
 - **Server tracking:** singles and **doubles from the start**. App predicts next server
   (including tiebreak rotation and fixed doubles partner order per set); user confirms with
-  one press.
+  one press. While the server is **not known yet** (first game), `G` pops a quick "Who
+  serves?" picker (keys 1/2/…; Esc leaves it open); in doubles it also asks when the team's
+  server can't be predicted. **Set server…** (button in the Serve group) uses the same
+  picker any time: in a game it changes that game's Game start, otherwise it records a Set
+  score holding only the server (for the next game). The score panel marks the server
+  with ● and says "Server not set" until it is known.
 - **Back-annotation of unknowns:** when a game (or set) closes, search all valid assignments
   of the unknown points (or games) consistent with rules, known outcomes, event count and
   the closing result (DP over score states):
@@ -254,6 +292,9 @@ may say "won"/"lost"/"?" but all store the same type.
 - **Gap rule:** if more than **10 minutes** pass with no anchor, add a chapter at the **first
   existing event at or after** the 10-minute point; if no event exists there, add nothing.
   Never at an arbitrary time.
+- Two sets of chapters and links: the **full recording** (Export screen, `config.toml`
+  lead-ins, `youtube.video_id`) and the **trimmed video** (Trim tool, `trim.toml` lead-ins,
+  `output.video_id`). A match-file `settings.lead_in_ms` override applies to both.
 - Chapters are computed **after** trim remapping. YouTube chapter rules (as understood —
   verify): first timestamp `0:00`, at least 3 chapters, each ≥ 10 s long. Violations are
   merged/dropped.
@@ -265,12 +306,25 @@ may say "won"/"lost"/"?" but all store the same type.
 - Video ID is pasted after upload; links regenerate from stored offsets.
 - Upload is done by the user in the browser for now (YouTube API upload is future work).
 
-## 9. Trim pass (after marking)
+## 9. Trim pass (after marking) — the Trim tool
+
+The Trim tool (§2) does everything in this section. Its `trim.toml` holds the default rules,
+`serve_lead_in_ms`, and `lead_in_ms` / `chapter_gap_ms` for the trimmed video's links; the
+match file holds per-match choices (`settings.trim`: rules, unticked cuts) and the made
+video (`output`: plan, path, the trimmed video's YouTube id). Outputs next to the match
+file: `<match> trimmed.mp4`, `<match> trimmed chapters.txt`, `<match> trimmed links.md`
+and `.csv`. `--links-only` rewrites chapters and links for the made video (after pasting
+its YouTube id). Run from the GUI it reports progress on stdout and stops on "cancel" on
+stdin (the partial video is deleted).
 
 - User picks removal rules; app lists the resulting cuts; user can untick any:
   - everything before the first Game start / Match start (warmup),
-  - **changeovers**: from the Game end closing an odd game of the set (count from a Set
-    score's games when given) to the next Game start,
+  - **changeovers**: from the end of an odd game of the set to the next Game start. The end
+    comes from the score engine, so games ended by points count too (anchored on the
+    game-ending point, or on its Game end if marked); uncertain game ends are not cut.
+    **Tiebreak changeovers** (every 6 points, or Coman: after point 1 then every 4) are cut
+    from that point to `serve_lead_in_ms` (trim.toml, default 3 s) before the next serve mark;
+    without a serve mark there is no sign of when play resumes, so none is proposed.
   - set breaks, everything after Match end.
 - Removals run exactly up to the next Game start / Set start mark; no extra pre-roll is kept
   before it. So **mark Game start where the kept footage should begin**: a lead-in before
@@ -305,15 +359,37 @@ may say "won"/"lost"/"?" but all store the same type.
 
 ## 10. Playback and timeline UI
 
+**Window** (agreed): works on a 1920×1200 screen or larger (the owner's is 3840×2160; Qt
+scales). Opens as a normal window, **not maximized** (owner's choice): last size and place
+(kept in state.json), or 1920×1200 centred the first time. Steps along the top: **1 Files → 2 Mark → 3 Trim → 4 Export**. Mark layout:
+
+```
+┌──────────────────────────────────────────┬────────────────────┐
+│                                          │ score / server     │
+│               Video (mpv)                │ (always visible)   │
+│                                          ├────────────────────┤
+├──────────────────────────────────────────┤ event buttons      │
+│ transport · speed drop-down · time       │ (scroll; lit = next)│
+├──────────────────────────────────────────┴────────────────────┤
+│ overview bar (whole match)                                     │
+│ detail strip (zoomable)                                        │
+├────────────────────────────────────────────────────────────────┤
+│ [Events] [Issues] lists                                        │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Runs from source for now: `run.bat` sets up `.venv` on first use (one-click .exe later).
+
 **Playback** (all keys remappable)
-- Speeds 0.25×, 0.5×, 1×, 1.5×, 2× (maybe 4× for scanning); list is a setting; set with
-  **buttons only** (no keys — agreed with the owner).
+- Speeds 0.25×, 0.5×, 1×, 1.5×, 2×, 4×, 8× (4× and 8× for scanning); list is a setting
+  (`playback.speeds`); chosen from a **drop-down** next to the transport buttons (no keys —
+  agreed with the owner).
 - Skip back/forward 5 s and 1 s (distances configurable); jump to previous/next event.
 - Frame step forward and back with hold-to-repeat; also the **mouse wheel over the video,
-  only while paused** (does nothing while playing). (Back-stepping long-GOP HEVC is slower;
+  only while paused** (wheel forward/up = next frame, owner's choice) (does nothing while playing). (Back-stepping long-GOP HEVC is slower;
   verify feel on real footage.)
 - **Reaction offset:** marks are shifted earlier by a configurable real-time delay scaled by
-  playback speed. Marks can be nudged by single frames afterward.
+  playback speed (default **200 ms** at 1×, agreed). Marks can be nudged by single frames afterward.
 
 **Timeline**
 - **Overview bar** (whole match) + **zoomable detail strip** (seconds to minutes; scroll to
@@ -330,6 +406,8 @@ may say "won"/"lost"/"?" but all store the same type.
 - Undo for every edit; autosave with backup of previous version.
 
 ## 11. Shortcuts and buttons
+
+Every button with a key shows it on a second line, e.g. `Play / Pause` over `[Space]`.
 
 - Every action has both a **keyboard shortcut and a clickable button**, generated from one
   definition so they can't drift. Buttons display their current key.
@@ -368,13 +446,33 @@ may say "won"/"lost"/"?" but all store the same type.
 ## 12. File selection and navigation
 
 - Remember the last folder; open there next time.
-- Custom browser panel (Qt's standard dialog can't do siblings): path bar, **Up**, dropdown
-  of **sibling folders**, recent folders, pinned favorites.
+- Explorer-like browser built into the Files step: **Back / Forward / Up / Refresh** (also
+  Alt+←/→/↑, F5, mouse back/forward buttons, Backspace), an address bar with folder
+  completion (Ctrl+L), and **Pin folder**. Left: **Quick access** (pinned, then recent; same
+  names get the parent folder added) and a **folder tree** (drives and network drives; a
+  click opens a folder, arrow keys open it after a short pause; follows the current folder).
+  Right: the current folder's **subfolders and match files**, with what each subfolder holds
+  ("2 videos · 1 match", read in the background; folders with a match in bold) and the
+  modified date. Double-click or Enter goes into a folder or opens a match; Up selects the
+  folder you came from.
 - Tick files for a match; show name, duration, size, and whether codec params match the
   first file (lossless join requires a match). App proposes order (recording number, then
   chapter; cross-checked with `creation_time`); user reorders by drag or up/down buttons.
 - If a folder holds several recordings, propose grouping by recording number — user approves.
 - Match file stores the final order; paths relative to the match file where possible.
+
+## 12a. Statistics (separate tool, no GUI)
+
+`python -m tennis_to_utube.stats <match file> [-o out.csv]` (Windows: drop the match file
+on `stats.bat`) writes `<match> stats.csv` (UTF-8 with BOM for Excel) from the event log
+only, using the score engine for servers, break points and inferred winners. Columns:
+Section, Stat, side A, side B; sections Match and Set N; doubles adds a By server table.
+Stats: points won, service/return points won, 1st serve in, 1st/2nd serve points won, aces,
+double faults, break points won/saved (not in tiebreaks), tiebreak points won, minibreaks
+won (tiebreak points won on return) and lost (tiebreak points lost on serve),
+service/return games won, winners, forced/unforced errors, points with unknown winner
+(left out). Serve stats only count points with serve
+marks; shot stats only count marked shots.
 
 ## 13. Future (keep the format ready)
 
@@ -396,6 +494,9 @@ may say "won"/"lost"/"?" but all store the same type.
    set score/ending state, back-annotation).
 6. GUI: file browser panel, mpv player, controls, timeline bars, event buttons, issues list,
    trim pass screen, export screen.
+
+Status (2026-10-04): steps 1–5 merged; step 6 built (all screens) and tested offscreen —
+awaiting the owner's check on Windows.
 
 **Testing:** pure-Python unit tests for everything in 1–5. End-to-end trim tests on
 **synthetic video matching the real profile** (`libx265`, `60000/1001`, keyint 60,

@@ -23,17 +23,22 @@ import dataclasses
 import math
 import os
 import re
+import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
-from typing import Iterable, Protocol, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Protocol, Sequence
 
 from . import catalog, structure
 from .issues import Issue
 from .matchfile import Event
-from .probe import Keyframe, MediaInfo, Tools, inspect_gop, probe, run
+from .probe import Keyframe, MediaInfo, ToolError, Tools, inspect_gop, no_window, probe
 from .timeline import Interval, Timeline, complement, merge_intervals
+
+if TYPE_CHECKING:
+    from .scoring import Analysis, ScoreView
 
 RULES = ("warmup", "changeovers", "set_breaks", "after_match")
 RULE_LABELS = {
@@ -70,13 +75,93 @@ def _next(events: Sequence[Event], i: int, types: frozenset[str]) -> Event | Non
     return None
 
 
-def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = RULES) -> list[Cut]:
+def _games_in_set(v: ScoreView) -> tuple[int | None, int | None]:
+    """(games played in the set, set number) right after a game ended."""
+    if v.pending_set is not None:  # the game ended the set
+        last = v.sets[-1] if v.sets else None
+        return (sum(last.games) if last and last.games else None), len(v.sets) if v.sets else None
+    return (sum(v.games) if v.games is not None else None,
+            len(v.sets) + 1 if v.sets is not None else None)
+
+
+def score_game_ends(analysis: Analysis) -> list[tuple[Event, int, int | None]]:
+    """Every game the score says ended: (anchor event, games played in its set, set number).
+
+    A game ended by a point is anchored on that point, or on its Game end if one is marked
+    before play goes on; a game recorded at game level is anchored on its Game end.
+    Games whose position is not certain are left out.
+    """
+    out: list[tuple[Event, int, int | None]] = []
+    prev_pending = None
+    for st in analysis.steps:
+        e, v = st.event, st.view
+        ended = False
+        if e.type == catalog.GAME_END:
+            if prev_pending is not None and out:
+                out[-1] = (e, out[-1][1], out[-1][2])  # the marked end of that game
+            else:
+                ended = True  # game-level scoring
+        elif v.pending_game is not None and (
+                e.type in (catalog.POINT, catalog.ACE)
+                or (e.type == catalog.FAULT and prev_pending is None)):  # a double fault
+            ended = True
+        if ended:
+            count, set_no = _games_in_set(v)
+            if count is not None:
+                out.append((e, count, set_no))
+        prev_pending = v.pending_game
+    return out
+
+
+SERVE_TYPES = frozenset({catalog.SERVE_IN, catalog.FAULT, catalog.LET, catalog.ACE})
+
+
+def score_tiebreak_changeovers(analysis: Analysis) -> list[tuple[Event, int, int | None]]:
+    """Tiebreak points after which players change ends: (point event, points played, set).
+
+    Every 6 points, or after the 1st and then every 4 with Coman tiebreaks (the format's
+    ``tiebreak_changeovers``). The point that ends the tiebreak is not one (the set ends).
+    """
+    from .scoring import tiebreak_changeover_after
+
+    out = []
+    prev = analysis.initial
+    for st in analysis.steps:
+        v = st.view
+        if (prev.in_tiebreak and v.in_tiebreak and prev.points is not None and v.points is not None
+                and sum(v.points) == sum(prev.points) + 1
+                and tiebreak_changeover_after(sum(v.points), v.fmt.tiebreak_changeovers)):
+            out.append((st.event, sum(v.points), len(v.sets) + 1 if v.sets is not None else None))
+        prev = v
+    return out
+
+
+def _next_serve(evs: Sequence[Event], i: int) -> Event | None:
+    """The next serve mark, if one comes before the next point ends."""
+    for e in evs[i + 1:]:
+        if e.type in SERVE_TYPES:
+            return e
+        if e.type in (catalog.POINT, catalog.GAME_END, catalog.SET_END, catalog.GAME_START):
+            return None
+    return None
+
+
+SERVE_LEAD_IN_MS = 3000
+
+
+def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = RULES,
+                 analysis: Analysis | None = None,
+                 serve_lead_in_ms: int = SERVE_LEAD_IN_MS) -> list[Cut]:
     """Cuts suggested by the chosen rules, sorted by start time.
 
     * warmup: from 0 to the first Match/Set/Game start or Set score.
-    * changeovers: from the Game end that closes an odd game of a set to the next Game
-      start (game parity from :mod:`structure`; while it is unknown, e.g. the video
-      starts mid-match without a Set score giving the games, none are proposed).
+    * changeovers: from the end of an odd game of a set to the next Game start. With a score
+      ``analysis``, games ended by points count too (anchored on the game-ending point, or
+      its Game end if marked); without one, Game end marks are counted (:mod:`structure`).
+      Where the game count is unknown, none are proposed. Also (with ``analysis``) tiebreak
+      changeovers, from the point after which ends change to ``serve_lead_in_ms`` before
+      the next serve mark (none without a serve mark: there is no other sign of when play
+      resumes).
     * set_breaks: from Set end to the next Set or Game start.
     * after_match: from Match end to the end of the video.
     """
@@ -97,9 +182,23 @@ def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = 
         if first is not None:
             add("warmup", first, 0, first.t_ms, RULE_LABELS["warmup"])
 
+    if analysis is not None and "changeovers" in rules:
+        index = {e.id: i for i, e in enumerate(evs)}
+        for e, count, set_no in score_game_ends(analysis):
+            nxt = _next(evs, index[e.id], frozenset({catalog.GAME_START}))
+            if count % 2 == 1 and nxt is not None:
+                set_txt = f" (set {set_no})" if set_no else ""
+                add("changeovers", e, e.t_ms, nxt.t_ms, f"Changeover after game {count}{set_txt}")
+        for e, k, set_no in score_tiebreak_changeovers(analysis):
+            serve = _next_serve(evs, index[e.id])
+            if serve is not None:
+                set_txt = f" (set {set_no})" if set_no else ""
+                add("changeovers", e, e.t_ms, serve.t_ms - serve_lead_in_ms,
+                    f"Tiebreak changeover after point {k}{set_txt}")
+
     for i, (e, pos) in enumerate(structure.walk(evs)):
         set_txt = f" (set {pos.set_no})" if pos.set_no else ""
-        if e.type == catalog.GAME_END and "changeovers" in rules:
+        if e.type == catalog.GAME_END and "changeovers" in rules and analysis is None:
             nxt = _next(evs, i, frozenset({catalog.GAME_START}))
             if pos.games_closed is not None and pos.games_closed % 2 == 1 and nxt is not None:
                 add("changeovers", e, e.t_ms, nxt.t_ms,
@@ -396,9 +495,44 @@ def _ffmpeg_issues(stderr: str) -> list[Issue]:
     return issues
 
 
+def _run_ffmpeg(cmd: list[str], total_ms: int, progress: Callable[[float], None] | None,
+                cancel: threading.Event | None) -> str:
+    """Run ffmpeg reporting progress (0..1) from ``-progress``; returns its stderr text."""
+    cmd = cmd[:-1] + ["-progress", "pipe:1", "-nostats", cmd[-1]]
+    with tempfile.TemporaryFile() as err:
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, **no_window())
+        except FileNotFoundError as exc:
+            raise ToolError(f"{cmd[0]} not found; install ffmpeg or set tools in config.toml") from exc
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            if cancel is not None and cancel.is_set():
+                proc.terminate()
+                proc.wait()
+                raise TrimError("cancelled")
+            line = raw.decode("utf-8", "replace").strip()
+            if progress and line.startswith("out_time_us=") and line[12:].isdigit() and total_ms:
+                progress(min(1.0, int(line[12:]) / 1000 / total_ms))
+        proc.wait()
+        err.seek(0)
+        text = err.read().decode("utf-8", "replace")
+    if cancel is not None and cancel.is_set():
+        raise TrimError("cancelled")
+    if proc.returncode != 0:
+        tail = "\n".join(text.strip().splitlines()[-10:])
+        raise ToolError(f"ffmpeg failed ({proc.returncode}): {tail}")
+    return text
+
+
 def run_trim(plan: TrimPlan, paths: Sequence[str | os.PathLike[str]], output: str | os.PathLike[str],
-             tools: Tools = Tools(), *, allow_open_gop: bool = False) -> TrimResult:
-    """Write the trimmed/joined file with ffmpeg, then verify it with ffprobe."""
+             tools: Tools = Tools(), *, allow_open_gop: bool = False,
+             progress: Callable[[float], None] | None = None,
+             cancel: threading.Event | None = None) -> TrimResult:
+    """Write the trimmed/joined file with ffmpeg, then verify it with ffprobe.
+
+    ``progress`` receives 0..1 while ffmpeg runs; setting ``cancel`` stops it (the partial
+    output is deleted and TrimError("cancelled") is raised).
+    """
     output = Path(output)
     sources = [Path(p).resolve() for p in paths]
     if output.resolve() in sources:
@@ -416,11 +550,15 @@ def run_trim(plan: TrimPlan, paths: Sequence[str | os.PathLike[str]], output: st
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(concat_script(plan, paths))
     try:
-        proc = run(ffmpeg_command(tools, list_path, output, first.codec))
+        stderr = _run_ffmpeg(ffmpeg_command(tools, list_path, output, first.codec),
+                             plan.total_out_ms, progress, cancel)
+    except TrimError:
+        output.unlink(missing_ok=True)
+        raise
     finally:
         os.unlink(list_path)
 
-    issues = _ffmpeg_issues(proc.stderr.decode("utf-8", "replace"))
+    issues = _ffmpeg_issues(stderr)
     info = probe(output, tools)
     expected = plan.total_out_ms
     frame_ms = 1000 / float(Fraction(first.fps)) if first.fps not in ("0/0", "") else 40.0
@@ -434,3 +572,22 @@ def run_trim(plan: TrimPlan, paths: Sequence[str | os.PathLike[str]], output: st
         issues.append(Issue("unexpected_streams", f"output has extra streams: {extra_streams}"))
     plan = dataclasses.replace(plan, output_start_ms=info.start_ms)
     return TrimResult(output, plan, info, tuple(issues))
+
+
+# -- what a produced video contains (stored in the match file for export) ---------------
+
+
+def plan_to_dict(plan: TrimPlan, output: str | None = None) -> dict[str, Any]:
+    """The parts of a plan the export needs: kept segments and the output's start offset."""
+    return {
+        "path": output,
+        "segments": [[s.start_ms, s.end_ms, s.out_start_ms] for s in plan.segments],
+        "output_start_ms": plan.output_start_ms,
+        "cuts": sorted(c.key for c in plan.cuts if c.enabled),
+    }
+
+
+def plan_from_dict(d: dict[str, Any], timeline: Timeline) -> TrimPlan:
+    """Rebuild a plan for remapping event times (no pieces: it is not for cutting again)."""
+    segments = tuple(Segment(int(a), int(b), int(c)) for a, b, c in d["segments"])
+    return TrimPlan(timeline, (), segments, (), int(d.get("output_start_ms", 0)))

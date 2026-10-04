@@ -63,3 +63,51 @@ def test_join_compatibility():
 def test_make_source(tmp_path):
     src = make_source(info(str(tmp_path / "GX010008.MP4")), tmp_path / "GX010008.match.json")
     assert src.path == "GX010008.MP4" and src.duration_ms == 1000 and src.fps == "60000/1001"
+
+
+def test_folder_listing(tmp_path):
+    from tennis_to_utube.sources import list_matches, list_videos, sibling_folders
+
+    for name in ("GX020008.MP4", "GX010008.MP4", "clip.mov", "notes.txt", ".hidden.mp4",
+                 "GX010008.match.json"):
+        (tmp_path / name).write_text("x")
+    (tmp_path / "sub.mp4").mkdir()
+    assert [p.name for p in list_videos(tmp_path)] == ["GX010008.MP4", "GX020008.MP4", "clip.mov"]
+    assert [p.name for p in list_matches(tmp_path)] == ["GX010008.match.json"]
+    for name in ("2026-09-28", "2026-10-02", "match 10", "match 9", ".git"):
+        (tmp_path / "parent" / name).mkdir(parents=True)
+    sib = sibling_folders(tmp_path / "parent" / "match 9")
+    assert [p.name for p in sib] == ["2026-09-28", "2026-10-02", "match 9", "match 10"]
+    assert list_videos(tmp_path / "nope") == [] and sibling_folders(tmp_path / "x" / "y") == []
+
+
+def test_new_match_file(tmp_path):
+    from tennis_to_utube.sources import new_match_file
+
+    infos = [info(str(tmp_path / "GX010008.MP4")), info(str(tmp_path / "GX020008.MP4"))]
+    mf = new_match_file(infos, tmp_path / "GX010008.match.json", kind="doubles",
+                        side_a=["Emma ", ""], side_b=["Sara"], format_spec={"preset": "pro10"})
+    assert [s.path for s in mf.sources] == ["GX010008.MP4", "GX020008.MP4"]
+    assert mf.match["sides"]["A"]["players"] == ["Emma", "Player 2"]
+    assert mf.match["sides"]["B"]["players"] == ["Sara", "Player 4"]
+    assert mf.match["kind"] == "doubles" and mf.match["format"] == {"preset": "pro10"}
+    single = new_match_file(infos[:1], tmp_path / "m.match.json")
+    assert single.match["sides"]["B"]["players"] == ["Player 2"]
+
+
+def test_subfolders_and_summaries(tmp_path):
+    from tennis_to_utube.sources import folder_summary, list_subfolders
+
+    for name in ("match 10", "match 2", ".hidden"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "match 2" / "GX010001.MP4").write_bytes(b"")
+    (tmp_path / "match 2" / "GX020001.mp4").write_bytes(b"")
+    (tmp_path / "match 2" / "GX010001.match.json").write_text("{}")
+    (tmp_path / "match 2" / "notes.txt").write_text("")
+    (tmp_path / "match 2" / "sub").mkdir()
+    assert [p.name for p in list_subfolders(tmp_path)] == ["match 2", "match 10"]
+    s = folder_summary(tmp_path / "match 2")
+    assert (s.videos, s.matches, s.folders) == (2, 1, 1)
+    assert s.text() == "2 videos · 1 match · 1 folder"
+    assert folder_summary(tmp_path / "match 10").text() == ""
+    assert folder_summary(tmp_path / "nope") is None and list_subfolders(tmp_path / "nope") == []

@@ -1,0 +1,141 @@
+# Review notes (work done while the owner was away)
+
+## Try first on Windows (15 minutes)
+1. Put `libmpv-2.dll` next to `run.bat` (see README), double-click `run.bat`.
+2. Files: open `W:\video\2026-09-28`, check the order/durations, create a match.
+3. Mark: play, try `Space`, arrows, `Ctrl+arrows`, the wheel over the video while paused,
+   a few `G`/`A`/`S`/`Z` presses; check the score panel and the timeline.
+4. Jump with `↑`/`↓` to a mark: is it on the exact frame you marked?
+5. Trim: untick a cut, Make video, play the result.
+6. Export: paste any video id, look at the chapters and the links file.
+
+## Changed after the first Windows look
+- Files: folder browsing is now Explorer-like (tree, Quick access, subfolders with what they
+  hold, Back/Forward/Up). Check it on `W:\video`, especially speed on the network drive.
+
+- Mark: who serves — score panel ● / "Server not set"; first `G` asks (picker); **Set
+  server…** button in Serve. Score stays on top, buttons scroll. Wheel forward = next
+  frame. Speed is a drop-down with 4× and 8×.
+
+## Trim is its own tool now
+- `trim.bat` / the Trim step runs `tennis_to_utube.trimtool` (own `trim.toml`; example in
+  `docs\trim.example.toml`). It makes the trimmed video and writes **trimmed** chapters
+  and links; paste the trimmed video's YouTube link on the Trim step to fill them in.
+- Export is now always the **full recording** (its own YouTube link).
+- Assumption: the match-file override `settings.lead_in_ms` (none set by the GUI today)
+  applies to both the full and the trimmed links.
+
+## Open questions
+- None right now.
+
+## Answered (2026-10-04)
+- Tiebreak changeovers need a serve mark (OK); the cut stops 3 s before the serve
+  (`trim.serve_lead_in_ms`).
+- The wheel works on Windows over the video and the timeline.
+- One-frame-late seeks don't matter. All assumptions below are approved.
+- Changeovers now also come from points (anchored on the point ending an odd game).
+- Tiebreak points are kept in set scores (`7-6(5)`, `[10-8]`).
+- Doubles: `G` pops a 1/2 server picker when the server can't be predicted.
+- Tiebreak changeovers added; regular (every 6) or Coman (1, then every 4) per match.
+- Stats: separate command (`stats.bat`, drop a match file on it), CSV, shot buttons only.
+- Shots: on their own they end the point; within 3 s after a Point they describe it
+  (a contradicting shot becomes a new point and is flagged). Serve stats count only
+  points with serve marks. Break points aren't counted in tiebreaks; minibreaks are
+  tracked separately (won on return / lost on serve).
+
+## Details by step
+
+## GUI step 1 — Files page
+- Folder listing shows `.mp4`/`.mov` files; GoPro files ordered by recording then chapter.
+- When a folder holds several recordings, only the **first recording** is ticked; the
+  user ticks others. (Design said "propose grouping, user approves" — this is the proposal.)
+- Creating a match where `<first file>.match.json` already exists offers to open it instead
+  (never overwrites).
+- Creation-time order problems are only shown as a tooltip on "Create match" (not blocking).
+- Remembered folders (last, recent ×10, pinned) live in `%APPDATA%\tennis_to_utube\state.json`.
+- Window minimum size 1280×800. It opens as a normal window (not maximized): where you left
+  it last time, or 1920×1200 centred the first time. Qt scales for 4K automatically.
+- `run.bat` creates `.venv` on first run and installs `.[gui]` (PySide6 + python-mpv).
+
+## GUI step 2 — Player
+- Playback joins the files with an mpv **EDL** with explicit segment lengths, so mpv's time
+  equals our joined timeline. Tested headless with real mpv 0.37 on barcode clips: seeking
+  to any time (including across the file join) shows exactly the frame that was on screen.
+- mpv detail found while testing: exact seeks show the first frame starting at or after
+  *target − 5 ms*; the app compensates (`playback.seek_seconds`). If your mpv build behaves
+  differently, events would show one frame late — worth a quick check on Windows.
+- **Wheel over the video** (frame step while paused): mpv draws into its own native window;
+  on Windows that window may swallow wheel events. Please check; fallback idea: make the
+  wheel work over the transport bar/timeline too.
+- Transport buttons show their key in brackets, e.g. `◀ 5s  [←]`. Buttons never take keyboard
+  focus, so Space always means play/pause.
+- Without `libmpv-2.dll` the app still runs: the video area explains what's missing and a
+  stand-in clock lets you mark anyway.
+- mpv options: `hwdec=auto-safe`, `hr-seek=yes`, `keep-open=always`. Back-stepping on 4K HEVC
+  may be slow (DESIGN §15) — please judge the feel.
+
+## GUI step 3 — Marking, score panel, undo, autosave
+- **Reaction offset** (200 ms × speed) applies only while playing; when paused the mark
+  goes exactly on the frame shown.
+- **G (Game start)** records the predicted server. If nobody is known yet (first game), it
+  assumes **side A (ours)** serves; use Shift+G for the other side. In doubles, a side's
+  first service game has no player prediction (the team chooses) — the server can be set
+  later (event editing comes with the lists).
+- Serve events (serve in, fault, let, ace) record the serving side, and the player in singles.
+- **Suggested buttons** (green): during a game the point and Game end buttons; between games
+  Game start/Set start; when the score says a set ended, the Set end buttons; after the
+  match, Match end. Serve buttons are never pushed (optional level).
+- **Selected event** (for Delete / move one frame) = the event just marked, or the one jumped
+  to with ↑/↓ (clicking in the timeline/lists comes next).
+- **Lock** freezes existing events (no delete/move/edit) but still allows new marks.
+- **Autosave** 1.5 s after each change (and when leaving/closing), keeping `.bak` of the
+  previous save. Undo/redo up to 500 steps per session (not across restarts).
+- Set score dialog: type "6-4 3-6", "3-2", "30-40"/"AD-40"/"deuce" and pick the server;
+  only filled parts are stored. Rules change dialog: preset + no-ad + match-tiebreak tick.
+  Ending state: final sets ("6-4 3-6 [10-8]"), stored with `"entered": true`.
+- Buttons show short names ("Point Emma S") and their key; menu-only events show no key.
+
+## GUI step 4 — Timeline bars
+- Overview (whole match) + detail strip (opens at 2 minutes wide; wheel zooms around the
+  cursor; down to 2 s). "Follow playhead" (on by default) pages the strip when the playhead
+  nears an edge. The overview shows the strip's window as a blue box.
+- Tick colours: points green (A) / red (B) / grey (unknown); serve blue; games orange; sets
+  brown; coaching teal; notes yellow; match-level indigo. Bands: sets (top row), games.
+- Cut proposals (from the trim rules) are shaded grey on both bars; red triangles = issues.
+- **Unticked cuts are stored in the match file** (`settings.trim.unticked`, by cut key), and
+  the chosen rules in `settings.trim.rules` — so the trim choices survive reopening.
+- Click picks a tick within 5 px; Ctrl+drag moves (refused while locked); Esc cancels.
+
+## GUI step 5 — Lists and editing
+- Events list columns: time, event, who, result (blue italic "(inferred)", red "?" when
+  uncertain), score after the event, tags/note. Click = select + jump; double-click = edit
+  (time, type, side, player, result, tags, note).
+- Issues tab title shows the count and how many need checking (warnings/errors); click jumps
+  to the event (or the time).
+- "Players & format…" button (top right): rename players — a find/replace over the match
+  file with a message saying how many places changed — and change the format/no-ad. Swapping
+  two names works. The whole change is one undo step.
+- Bug found and fixed while testing: undo did not restore player renames/format/trim choices
+  (snapshots shared nested data). Fixed with deep copies + tests.
+
+## GUI step 6 — Trim
+- Rule ticks + a list of cuts ("remove" ticked by default); untick to keep footage;
+  double-click a cut to see it on the Mark step. Summary shows approximate result before
+  planning; "Check exact cuts" finds keyframes and shows the exact video length and events
+  that would be lost.
+- Default video name: `<first file> trimmed.mp4` next to the match file (editable / Choose…).
+- "Make video" runs ffmpeg in the background with a progress bar and Cancel (a cancelled
+  partial file is deleted), then checks it with ffprobe and lists any problems.
+- After making a video, its plan is stored in the match file (`output`) — export uses it, so
+  you can keep marking/editing events afterwards and the links still match the video. If the
+  cuts change after making the video, the Trim page says so.
+- Making a video with no cuts ticked just joins the files (useful for multi-file matches).
+
+## GUI step 7 — Export
+- Paste the YouTube link or id (youtu.be/…, watch?v=…, /shorts/…, /live/… or the bare
+  11-character id); it is stored in the match file and links regenerate.
+- Chapters box (Copy button) for the YouTube description; links preview grouped by chapter.
+- "Save links" writes `<first file> links.md` and `<first file> links.csv` next to the match
+  file. The CSV is UTF-8 with BOM so Excel on Windows shows accented names correctly.
+- Without a made video, times refer to the original recording (and a note says so; for
+  multi-file matches the files are joined in order — upload a made video instead).

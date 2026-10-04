@@ -161,3 +161,11 @@ def test_paths_relative_to_match_file(tmp_path):
 def test_source_dict_order_and_extra():
     s = Source("a.mp4", 1000, extra={"z": 1})
     assert list(s.to_dict())[:2] == ["path", "duration_ms"] and s.to_dict()["z"] == 1
+
+
+def test_output_field_round_trips():
+    mf = loads(json.dumps({**SAMPLE, "output": {"path": "out.mp4", "segments": [[0, 5, 0]]}}))
+    assert mf.output["path"] == "out.mp4"
+    assert json.loads(mfmod.dumps(mf))["output"]["segments"] == [[0, 5, 0]]
+    with pytest.raises(MatchFileError):
+        loads(json.dumps({**SAMPLE, "output": [1]}))

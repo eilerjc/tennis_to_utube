@@ -31,11 +31,16 @@ class Tools:
         return cls(ffmpeg=config.get("tools.ffmpeg"), ffprobe=config.get("tools.ffprobe"))
 
 
+def no_window() -> dict[str, Any]:
+    """subprocess options so tools open no console window (Windows)."""
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}  # type: ignore[attr-defined]
+    return {}
+
+
 def run(cmd: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
     """Run a tool without a console window (Windows), raising ToolError on failure."""
-    kwargs: dict[str, Any] = {}
-    if sys.platform == "win32":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+    kwargs = no_window()
     try:
         proc = subprocess.run(list(cmd), capture_output=True, **kwargs)
     except FileNotFoundError as exc:

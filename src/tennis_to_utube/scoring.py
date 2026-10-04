@@ -16,6 +16,7 @@ looked up in the match to find their side.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, fields, replace
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -42,6 +43,16 @@ class Format:
     ad: bool = True  # False: no-ad, deciding point at deuce
     final_set: str = "match_tiebreak"  # "set" | "match_tiebreak" (in place of the final set)
     match_tiebreak_points: int = 10
+    # Ends are changed in tiebreaks after every 6 points ("regular"), or after the first
+    # point and then every 4 ("coman", used in doubles).
+    tiebreak_changeovers: str = "regular"
+
+
+def tiebreak_changeover_after(points_played: int, kind: str) -> bool:
+    """True if players change ends after this many tiebreak points."""
+    if kind == "coman":
+        return points_played == 1 or (points_played >= 5 and (points_played - 1) % 4 == 0)
+    return points_played > 0 and points_played % 6 == 0
 
 
 PRESETS: dict[str, Format] = {
@@ -53,6 +64,14 @@ PRESETS: dict[str, Format] = {
     "short_sets": Format(games=4, tiebreak_at=4),  # to 4, tiebreak at 4-4, match tiebreak
 }
 DEFAULT_PRESET = "standard_mtb"
+PRESET_LABELS = {
+    "standard_mtb": "Best of 3, match tiebreak (10) for the 3rd set",
+    "standard": "Best of 3 sets",
+    "best_of_5": "Best of 5 sets",
+    "pro_set": "Pro set (8 games)",
+    "pro10": "Pro set (10 games)",
+    "short_sets": "Short sets (to 4), match tiebreak (10)",
+}
 
 
 def patch_format(fmt: Format, patch: Mapping[str, Any]) -> tuple[Format, list[str]]:
@@ -81,6 +100,7 @@ def patch_format(fmt: Format, patch: Mapping[str, Any]) -> tuple[Format, list[st
             "ad": isinstance(value, bool),
             "final_set": value in ("set", "match_tiebreak"),
             "match_tiebreak_points": _pos_int(value),
+            "tiebreak_changeovers": value in ("regular", "coman"),
         }[key]
         if ok:
             changes[key] = value
@@ -244,11 +264,11 @@ def read_checkpoint(e: Event, match: dict[str, Any] | None = None) -> Checkpoint
     sets = None
     if "sets" in d:
         raw = d["sets"] if isinstance(d["sets"], list) else None
-        pairs = [_pair(x) for x in raw] if raw is not None else None
-        if pairs is None or any(p is None or p[0] == p[1] for p in pairs):
+        entries = [set_entry(x) for x in raw] if raw is not None else None
+        if entries is None or any(s is None for s in entries):
             problems.append(f"invalid sets {d['sets']!r}")
         else:
-            sets = tuple(SetScore("A" if a > b else "B", (a, b)) for a, b in pairs)
+            sets = tuple(entries)
     games = _pair(d.get("games"))
     if "games" in d and games is None:
         problems.append(f"invalid games {d['games']!r}")
@@ -277,7 +297,10 @@ def _fits(s: State, cp: Checkpoint) -> bool:
 
 
 def _apply_checkpoint(s: State, cp: Checkpoint, tracking: bool) -> State:
-    """Given parts replace the state's; others are kept, or unknown before any scoring."""
+    """Given parts replace the state's; others are kept, or unknown before any scoring.
+    Only a server given (e.g. Set server…): just the server changes."""
+    if cp.server is not None and cp.sets is None and cp.games is None and cp.points is None:
+        return replace(s, server=cp.server)  # (an empty Set score still means "unknown")
     if cp.sets is not None:
         keep_detail = s.sets is not None and _sets_match(cp.sets, s.sets)
         sets = s.sets if keep_detail else cp.sets
@@ -297,8 +320,27 @@ def _apply_checkpoint(s: State, cp: Checkpoint, tracking: bool) -> State:
 # -- the engine ------------------------------------------------------------------------
 
 # How an event affects the score (decided by a plain pass over the log, see _classify).
-POINT_END = "point_end"  # Point, Ace, or the second Fault of a point
+POINT_END = "point_end"  # Point, Ace, a shot (winner/error), or the second Fault of a point
+# Point-ending shots; ``side`` (or ``player``) is the hitter.
+SHOT_TYPES = (catalog.WINNER, catalog.FORCED_ERROR, catalog.UNFORCED_ERROR)
 OUTCOME_TYPES = (catalog.POINT, catalog.GAME_END, catalog.SET_END)
+
+
+def shot_of(e: Event, match: dict) -> tuple[str, str | None] | None:
+    """(shot type, hitter side) of a shot event, or of a Point carrying a shot as a modifier
+    (``details.shot`` / ``details.shot_side``); None if there is no shot."""
+    if e.type in SHOT_TYPES:
+        return e.type, names.side_of(match, e.player) or names.side_of(match, e.side)
+    shot = e.details.get("shot") if e.type == catalog.POINT else None
+    if shot in SHOT_TYPES:
+        side = e.details.get("shot_side")
+        return shot, side if side in SIDES else None
+    return None
+
+
+def shot_point_winner(shot: str, hitter: str) -> str:
+    """A winner wins the point for the hitter; an error loses it."""
+    return hitter if shot == catalog.WINNER else other(hitter)
 
 
 @dataclass(frozen=True)
@@ -313,7 +355,7 @@ def _classify(events: Sequence[Event], match: dict[str, Any] | None) -> list[_In
     out, faults, tracking = [], 0, False
     for e in events:
         kind = None
-        if e.type in (catalog.POINT, catalog.ACE):
+        if e.type in (catalog.POINT, catalog.ACE) or e.type in SHOT_TYPES:
             kind = POINT_END
         elif e.type == catalog.FAULT:
             faults += 1
@@ -323,8 +365,8 @@ def _classify(events: Sequence[Event], match: dict[str, Any] | None) -> list[_In
         out.append(_Info(kind, tracking, side, cp))
         if kind == POINT_END:
             faults = 0
-        if kind == POINT_END or e.type in (catalog.GAME_END, catalog.SET_END):
-            tracking = True
+        if kind == POINT_END or e.type in (catalog.GAME_END, catalog.SET_END, catalog.MATCH_START):
+            tracking = True  # (Match start: the score is known from here, 0-0)
     return out
 
 
@@ -343,6 +385,9 @@ def _moves(s: State, e: Event, info: _Info, forced: bool) -> list[tuple[State, s
     if info.kind == POINT_END:
         if t == catalog.POINT:
             known = _entered(e)
+        elif t in SHOT_TYPES:  # a winner wins the point for the hitter; an error loses it
+            hitter = info.side
+            known = shot_point_winner(t, hitter) if hitter else None
         else:
             srv = s.point_server()
             known = (srv if t == catalog.ACE else other(srv)) if srv else None
@@ -409,6 +454,9 @@ def _moves(s: State, e: Event, info: _Info, forced: bool) -> list[tuple[State, s
     if t == catalog.SET_START:
         return [(replace(s, pending_game=None, pending_set=None), None)]
 
+    if t == catalog.MATCH_START:  # everything 0-0 (a server already chosen is kept)
+        return [(State(s.fmt, server=s.server), None)]
+
     return [(s, None)]
 
 
@@ -445,6 +493,7 @@ class ScoreView:
     winner: str | None
     certain: bool  # exactly one possible state
     fmt: Format
+    pending_game: str | None = None  # a game just ended on points (Game end not marked yet)
 
 
 def view_of(states: Iterable[State]) -> ScoreView:
@@ -463,7 +512,8 @@ def view_of(states: Iterable[State]) -> ScoreView:
         sets=sets, games=common(lambda s: s.games), points=common(lambda s: s.points),
         server=common(lambda s: s.server), in_tiebreak=common(lambda s: s.in_tiebreak),
         pending_set=common(lambda s: s.pending_set), winner=common(lambda s: s.winner),
-        certain=len(states) == 1, fmt=states[0].fmt if states else Format())
+        certain=len(states) == 1, fmt=states[0].fmt if states else Format(),
+        pending_game=common(lambda s: s.pending_game))
 
 
 @dataclass(frozen=True)
@@ -605,21 +655,28 @@ def _pre_issues(e: Event, info: _Info, states: set[State], match: dict[str, Any]
 
 
 def _duplicate_points(evs: Sequence[Event], infos: Sequence[_Info], window_ms: int) -> list[Issue]:
-    """A Point shortly after a point ended by a serve (ace or double fault), no serve between."""
-    out, serve_end = [], None
+    """A Point shortly after a point ended by an ace, double fault or shot, or a shot shortly
+    after a Point (one the shot could not describe), with no serve between."""
+    out, serve_end, point_end = [], None, None
     for e, info in zip(evs, infos):
         if e.type in (catalog.SERVE_IN, catalog.LET) or (e.type == catalog.FAULT
                                                           and info.kind is None):
-            serve_end = None
+            serve_end = point_end = None
+        elif e.type in SHOT_TYPES and point_end is not None and e.t_ms - point_end <= window_ms:
+            out.append(Issue("possible_duplicate_point",
+                             f"{catalog.label(e.type)} marked right after a Point but ends a new "
+                             "point (it disagrees with the Point's winner?); delete one if it is "
+                             "the same point", e.t_ms, e.id))
+            serve_end, point_end = e.t_ms, None
         elif info.kind == POINT_END and e.type != catalog.POINT:
             serve_end = e.t_ms
         elif e.type == catalog.POINT:
             if serve_end is not None and e.t_ms - serve_end <= window_ms:
                 out.append(Issue("possible_duplicate_point",
-                                 "Point marked right after a point ended by the serve "
-                                 "(ace or double fault); delete it if it is the same point",
+                                 "Point marked right after a point ended by an ace, double fault "
+                                 "or shot; delete it if it is the same point",
                                  e.t_ms, e.id))
-            serve_end = None
+            serve_end, point_end = None, e.t_ms
     return out
 
 
@@ -652,6 +709,49 @@ def parse_pair(text: str) -> tuple[int, int] | None:
     if len(parts) == 2 and all(p.isdigit() for p in parts):
         return int(parts[0]), int(parts[1])
     return None
+
+
+def parse_sets(text: str) -> list[tuple[int, ...]] | None:
+    """Set scores as typed, tiebreak points kept: "6-4 3-6" → [(6, 4), (3, 6)];
+    "7-6(5)" → (7, 6, 7, 5); a match tiebreak "[10-8]" → (1, 0, 10, 8).
+
+    Entries are (games A, games B) or (games A, games B, tiebreak A, tiebreak B), as stored in
+    Set score / Ending state ``details.sets``. "(5)" is the loser's tiebreak points; the
+    winner's are 7, or 2 more in an extended tiebreak. Empty → []; not understood → None.
+    """
+    out: list[tuple[int, ...]] = []
+    for token in re.split(r"[,\s]+", text.strip()):
+        if not token:
+            continue
+        m = re.fullmatch(r"(.+?)\((\d+)\)", token)
+        loser_tb = int(m.group(2)) if m else None
+        token = m.group(1) if m else token
+        bracket = token.startswith("[") and token.endswith("]")
+        pair = parse_pair(token.strip("[]"))
+        if pair is None or pair[0] == pair[1]:
+            return None
+        a_won = pair[0] > pair[1]
+        if bracket:
+            out.append(((1, 0) if a_won else (0, 1)) + pair)
+        elif loser_tb is not None:
+            winner_tb = max(7, loser_tb + 2)
+            out.append(pair + ((winner_tb, loser_tb) if a_won else (loser_tb, winner_tb)))
+        else:
+            out.append(pair)
+    return out
+
+
+def set_entry(value: Any) -> SetScore | None:
+    """A stored set: [games A, games B] or [games A, games B, tiebreak A, tiebreak B]."""
+    if not isinstance(value, list) or len(value) not in (2, 4):
+        return None
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in value):
+        return None
+    a, b = value[0], value[1]
+    if a == b:
+        return None
+    tiebreak = (value[2], value[3]) if len(value) == 4 else None
+    return SetScore("A" if a > b else "B", (a, b), tiebreak)
 
 
 def parse_points(text: str, tiebreak: bool = False) -> tuple[int, int] | None:
@@ -694,3 +794,15 @@ def score_text(view: ScoreView) -> str:
         parts.append(f"{view.games[0]}–{view.games[1]}" if view.games is not None else "?")
         parts.append(points_text(view) or "?")
     return ", ".join(parts)
+
+
+def point_server_side(view: ScoreView) -> str | None:
+    """Side serving the next point, if the score says so (tiebreaks rotate every 2 points)."""
+    if view.server is None:
+        return None
+    if view.in_tiebreak:
+        if view.points is None:
+            return None
+        k = sum(view.points)
+        return view.server if ((k + 1) // 2) % 2 == 0 else other(view.server)
+    return view.server

@@ -503,3 +503,64 @@ def test_tiebreak_start_needs_level_games():
     an, view = final(log.events)
     assert [i.code for i in an.issues] == ["score_conflict"]
     assert view.in_tiebreak  # applied as entered
+
+
+@pytest.mark.parametrize("text, sets", [
+    ("6-4 3-6", [(6, 4), (3, 6)]),
+    ("6–4, 7-6(5), [10-8]", [(6, 4), (7, 6, 7, 5), (1, 0, 10, 8)]),
+    ("6-7(10)", [(6, 7, 10, 12)]),  # extended tiebreak: winner has 2 more
+    ("", []), ("6-6", None), ("6-x", None), ("[8-10]", [(0, 1, 8, 10)]), ("7-6(x)", None),
+])
+def test_parse_sets(text, sets):
+    assert scoring.parse_sets(text) == sets
+
+
+def test_stored_sets_keep_tiebreaks():
+    log = Log()
+    log("score_state", details={"sets": [[7, 6, 7, 5], [4, 6], [1, 0, 10, 8]]})
+    an, view = final(log.events, PRESETS["standard_mtb"])
+    assert view.sets == (SetScore("A", (7, 6), (7, 5)), SetScore("B", (4, 6)),
+                         SetScore("A", (1, 0), (10, 8)))
+    assert view.winner == "A" and score_text(view) == "7–6(5), 4–6, [10–8]"
+    assert an.issues == []
+    bad = Log()
+    bad("score_state", details={"sets": [[7, 6, 7]]})
+    assert [i.code for i in analyze(bad.events, STD).issues] == ["invalid_score_state"]
+
+
+def test_shots_end_the_point():
+    log = Log()
+    log("winner", side="A")          # A wins the point
+    log("unforced_error", side="A")  # B wins it
+    log("forced_error", side="B")    # A wins it
+    w = log("winner")                # hitter unknown: winner of the point unknown
+    an, view = final(log.events)
+    assert view.points is None  # 3-1 or 2-2
+    assert [an.step_for(e.id).winner for e in log.events[:3]] == ["A", "B", "A"]
+    assert an.step_for(w.id).uncertain
+    log.t += 1_000
+    log("point", result="A")  # right after a shot-ended point: possible duplicate
+    assert "possible_duplicate_point" in [i.code for i in analyze(log.events, STD).issues]
+
+
+def test_match_start_sets_everything_to_zero_and_known():
+    log = Log()
+    log("score_state", details={"games": [3, 2]})  # before anything: the video starts mid-match
+    _, view = final(log.events)
+    assert view.games == (3, 2) and view.sets is None  # sets not given: unknown
+    log = Log()
+    log("score_state", details={"server": "B"})  # only the server (Set server…)
+    log("match_start")
+    _, view = final(log.events)
+    assert (view.sets, view.games, view.points, view.server) == ((), (0, 0), (0, 0), "B")
+    log("score_state", details={"games": [3, 2]})  # after Match start the rest stays known
+    _, view = final(log.events)
+    assert view.sets == () and view.games == (3, 2) and view.certain
+
+
+def test_server_only_set_score_keeps_the_score():
+    log = Log()
+    log("score_state", details={"server": "A"})
+    log.points("ab")
+    _, view = final(log.events)
+    assert (view.sets, view.games, view.points, view.server) == ((), (0, 0), (1, 1), "A")

@@ -71,3 +71,38 @@ def test_match_settings_override_app_config(tmp_path):
     assert s.lead_in_for("point") == 6000
     assert s.chapter_gap_ms == 120000
     assert effective_settings(cfg).lead_in_for("ace") == 5000
+
+
+def test_trim_config_is_its_own_file(tmp_path):
+    from tennis_to_utube.config import load_trim_config
+
+    cfg = load_trim_config(tmp_path / "missing.toml")
+    assert cfg.get("rules") == ["warmup", "changeovers", "set_breaks", "after_match"]
+    assert cfg.get("serve_lead_in_ms") == 3000 and cfg.get("lead_in_ms.default") == 5000
+    path = tmp_path / "trim.toml"
+    path.write_text('rules = ["warmup"]\nserve_lead_in_ms = 1500\n[lead_in_ms]\nace = 3000\n',
+                    encoding="utf-8")
+    cfg = load_trim_config(path)
+    assert cfg.get("rules") == ["warmup"] and cfg.get("serve_lead_in_ms") == 1500
+    assert cfg.get("lead_in_ms") == {"default": 5000, "ace": 3000} and not cfg.warnings
+
+
+def test_trim_rules_from_trim_config(tmp_path):
+    from tennis_to_utube.config import load_trim_config
+    from tennis_to_utube.matchfile import MatchFile
+    from tennis_to_utube.session import Session
+
+    path = tmp_path / "trim.toml"
+    path.write_text('rules = ["after_match"]\n', encoding="utf-8")
+    s = Session(MatchFile(), tmp_path / "m.match.json", trim_config=load_trim_config(path))
+    assert s.trim_rules() == ["after_match"]
+
+
+def test_trim_example_matches_the_defaults():
+    import tomllib
+    from pathlib import Path
+
+    from tennis_to_utube.config import TRIM_DEFAULTS
+
+    example = Path(__file__).parent.parent / "docs" / "trim.example.toml"
+    assert tomllib.loads(example.read_text(encoding="utf-8")) == TRIM_DEFAULTS

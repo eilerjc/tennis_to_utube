@@ -317,3 +317,122 @@ def test_ffmpeg_command_is_stream_copy():
     assert cmd[-1] == "out.mp4"
     assert "-c:v" not in cmd and "libx265" not in joined
     assert "-tag:v" not in ffmpeg_command(Tools(), "l", "o", video_codec="h264")
+
+
+def test_plan_round_trip_for_export():
+    import dataclasses
+
+    from tennis_to_utube.trim import plan_from_dict, plan_to_dict
+
+    tl = Timeline((60_000, 30_000))
+    cuts = [cut(10_000, 20_000), Cut("x", "test", 70_000, 80_000, "x", enabled=False)]
+    plan = dataclasses.replace(plan_trim(tl, cuts, kfs(60_000, 30_000)), output_start_ms=39)
+    d = plan_to_dict(plan, "match.mp4")
+    assert d["path"] == "match.mp4" and d["cuts"] == ["test:10000"]
+    again = plan_from_dict(d, tl)
+    for t in (0, 9_000, 15_000, 25_000, 89_999):
+        assert again.remap(t) == plan.remap(t)
+
+
+def _score(events):
+    from tennis_to_utube.scoring import PRESETS, analyze
+
+    return analyze(events, PRESETS["standard"])
+
+
+def test_changeovers_from_points_only():
+    events = [ev(1_000, "game_start", side="A")]
+    t = 2_000
+    for game, r in enumerate("ABA"):
+        for _ in range(4):
+            events.append(ev(t, "point", result=r))
+            t += 1_000
+        t += 60_000  # changeover / gap
+        events.append(ev(t, "game_start"))
+        t += 1_000
+    cuts = propose_cuts(events, 600_000, ["changeovers"], _score(events))
+    assert [(c.start_ms, c.label) for c in cuts] == [
+        (5_000, "Changeover after game 1 (set 1)"), (135_000, "Changeover after game 3 (set 1)")]
+    assert cuts[0].key == "changeovers:point@5000"
+    # without a score analysis only Game end marks count
+    assert propose_cuts(events, 600_000, ["changeovers"]) == []
+
+
+def test_marked_game_end_is_the_anchor():
+    events = [ev(1_000, "game_start", side="A")]
+    events += [ev(t, "point", result="A") for t in (2_000, 3_000, 4_000, 5_000)]
+    events += [ev(6_000, "note"), ev(8_000, "game_end", result="A"), ev(60_000, "game_start")]
+    cuts = propose_cuts(events, 100_000, ["changeovers"], _score(events))
+    assert [(c.start_ms, c.end_ms, c.key) for c in cuts] == [(8_000, 60_000, "changeovers:game_end@8000")]
+
+
+def test_double_fault_ends_a_game_and_first_fault_does_not():
+    events = [ev(1_000, "game_start", side="A")]
+    events += [ev(t, "point", result="B") for t in (2_000, 3_000, 4_000)]
+    events += [ev(5_000, "fault"), ev(5_500, "fault")]  # double fault: B wins game 1
+    events += [ev(30_000, "fault"), ev(31_000, "point", result="A"), ev(60_000, "game_start")]
+    cuts = propose_cuts(events, 100_000, ["changeovers"], _score(events))
+    assert [(c.start_ms, c.end_ms) for c in cuts] == [(5_500, 60_000)]
+
+
+def test_uncertain_game_end_is_not_cut():
+    events = [ev(1_000, "game_start", side="A")]
+    events += [ev(t, "point", result="A") for t in (2_000, 3_000, 4_000)]
+    events += [ev(5_000, "point", result="unknown"), ev(60_000, "game_start")]
+    assert propose_cuts(events, 100_000, ["changeovers"], _score(events)) == []
+
+
+def _tiebreak_events(coman=False):
+    """6-6 by game-level marks, then a tiebreak with a serve mark before every point."""
+    events, t = [], 0
+    for _ in range(6):
+        for r in "AB":
+            events.append(ev(t, "game_end", result=r))
+            t += 1_000
+    events.append(ev(t, "game_start", side="A"))
+    for k in range(13):  # 13 points alternating A/B: 7-6, the tiebreak is still going
+        t += 30_000
+        events.append(ev(t, "serve_in"))
+        events.append(ev(t + 5_000, "point", result="AB"[k % 2], id=f"p{k + 1}"))
+    return events
+
+
+def test_tiebreak_changeovers_regular_and_coman():
+    from tennis_to_utube.scoring import PRESETS, analyze
+    import dataclasses
+
+    events = _tiebreak_events()
+    fmt = PRESETS["standard"]
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, fmt))
+    tb = [c for c in cuts if c.label.startswith("Tiebreak")]
+    assert [c.key for c in tb] == ["changeovers:p6", "changeovers:p12"]
+    assert tb[0].label == "Tiebreak changeover after point 6 (set 1)"
+    p6 = next(e for e in events if e.id == "p6")
+    # to 3 s (the default lead-in) before the next serve
+    assert (tb[0].start_ms, tb[0].end_ms) == (p6.t_ms, p6.t_ms + 25_000 - 3_000)
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, fmt), serve_lead_in_ms=0)
+    assert [c.end_ms for c in cuts if c.key == "changeovers:p6"] == [p6.t_ms + 25_000]
+    # a lead-in longer than the break: no cut
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, fmt),
+                        serve_lead_in_ms=30_000)
+    assert not [c for c in cuts if c.label.startswith("Tiebreak")]
+    coman = dataclasses.replace(fmt, tiebreak_changeovers="coman")
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, coman))
+    # p13 would change ends too, but no serve is marked after it (end of the log)
+    assert [c.key for c in cuts if c.label.startswith("Tiebreak")] == [
+        "changeovers:p1", "changeovers:p5", "changeovers:p9"]
+
+
+def test_tiebreak_changeover_needs_a_serve_mark():
+    from tennis_to_utube.scoring import PRESETS, analyze
+
+    events = [e for e in _tiebreak_events() if e.type != "serve_in"]
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, PRESETS["standard"]))
+    assert not [c for c in cuts if c.label.startswith("Tiebreak")]
+
+
+def test_tiebreak_changeover_rule():
+    from tennis_to_utube.scoring import tiebreak_changeover_after
+
+    assert [k for k in range(1, 20) if tiebreak_changeover_after(k, "regular")] == [6, 12, 18]
+    assert [k for k in range(1, 20) if tiebreak_changeover_after(k, "coman")] == [1, 5, 9, 13, 17]

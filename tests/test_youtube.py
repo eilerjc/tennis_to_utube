@@ -1,12 +1,15 @@
 import csv
 import io
 
+import pytest
+
 from tennis_to_utube.config import Settings
 from tennis_to_utube.matchfile import MatchFile
 from tennis_to_utube.timeline import Timeline
 from tennis_to_utube.trim import plan_trim
 from tennis_to_utube.youtube import (
-    build_export, describe, description, link_url, links_csv, links_markdown, timestamp,
+    build_export, describe, description, link_url, links_csv, links_markdown, parse_video_id,
+    timestamp,
 )
 
 SETTINGS = Settings(lead_in={"default": 5000, "ace": 3000}, chapter_gap_ms=600_000)
@@ -78,3 +81,43 @@ def test_build_export_with_video_id():
 
 def test_description_lines():
     assert description([]) == ""
+
+
+@pytest.mark.parametrize("text, vid", [
+    ("dQw4w9WgXcQ", "dQw4w9WgXcQ"), ("https://youtu.be/dQw4w9WgXcQ?si=abc", "dQw4w9WgXcQ"),
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s", "dQw4w9WgXcQ"),
+    ("youtube.com/shorts/dQw4w9WgXcQ", "dQw4w9WgXcQ"), ("https://youtube.com/live/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ("https://example.com/watch?v=dQw4w9WgXcQ", None), ("nope", None), ("", None),
+])
+def test_parse_video_id(text, vid):
+    assert parse_video_id(text) == vid
+
+
+def test_match_summary():
+    from tennis_to_utube.flow import analyze_match
+    from tennis_to_utube.youtube import match_summary
+
+    mf = match()
+    assert match_summary(mf, analyze_match(mf)) == "Emma vs Sara"
+    mf.add_event(299_000, "ending_state", details={"sets": [[6, 4], [3, 6], [1, 0]], "entered": True})
+    assert match_summary(mf, analyze_match(mf)) == (
+        "Emma vs Sara: 6–4, 3–6, 1–0 (final score from the scorebook)")
+    pro = MatchFile()
+    pro.match["format"] = {"preset": "pro_set"}
+    for t in range(8):
+        pro.add_event(t, "game_end", result="B")
+    assert match_summary(pro, analyze_match(pro)) == "Player 1 vs Player 2: 0–8 — Player 2 won"
+    md = links_markdown([], "T", "Emma vs Sara")
+    assert md.startswith("# T\n\nEmma vs Sara\n")
+
+
+def test_match_summary_keeps_tiebreaks():
+    from tennis_to_utube.flow import analyze_match
+    from tennis_to_utube.scoring import parse_sets
+    from tennis_to_utube.youtube import match_summary
+
+    mf = match()
+    sets = [list(p) for p in parse_sets("6-4 6-7(5) [10-8]")]
+    mf.add_event(299_000, "ending_state", details={"sets": sets, "entered": True})
+    assert match_summary(mf, analyze_match(mf)) == (
+        "Emma vs Sara: 6–4, 6–7(5), [10–8] (final score from the scorebook)")

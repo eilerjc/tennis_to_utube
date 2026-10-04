@@ -16,8 +16,11 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from .issues import Issue
-from .matchfile import Source, relative_source_path
+from .matchfile import MatchFile, Source, default_match, relative_source_path
 from .probe import MediaInfo
+
+VIDEO_EXTENSIONS = (".mp4", ".mov")
+MATCH_SUFFIX = ".match.json"
 
 _GOPRO_RE = re.compile(r"^G([A-Z])(\d{2})(\d{4})\.MP4$", re.IGNORECASE)
 
@@ -59,6 +62,73 @@ def group_by_recording(paths: Iterable[str | os.PathLike[str]]) -> "OrderedDict[
         g = parse_gopro_name(p)
         groups.setdefault(g.recording if g else None, []).append(p)
     return groups
+
+
+def list_videos(folder: str | os.PathLike[str]) -> list[Path]:
+    """Video files in ``folder``, in the proposed order."""
+    try:
+        entries = list(Path(folder).iterdir())
+    except OSError:
+        return []
+    return order_files(p for p in entries
+                       if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
+                       and not p.name.startswith("."))
+
+
+def list_matches(folder: str | os.PathLike[str]) -> list[Path]:
+    """Match files already in ``folder``."""
+    try:
+        return sorted(p for p in Path(folder).iterdir() if p.name.endswith(MATCH_SUFFIX))
+    except OSError:
+        return []
+
+
+def list_subfolders(folder: str | os.PathLike[str]) -> list[Path]:
+    """Folders inside ``folder``, naturally sorted ("match 2" before "match 10"); hidden
+    ones skipped."""
+    try:
+        dirs = [p for p in Path(folder).iterdir() if not p.name.startswith(".") and p.is_dir()]
+    except OSError:
+        return []
+    return sorted(dirs, key=lambda p: _natural_key(p.name))
+
+
+def sibling_folders(folder: str | os.PathLike[str]) -> list[Path]:
+    """Folders next to ``folder`` (including itself), naturally sorted; hidden ones skipped."""
+    return list_subfolders(Path(folder).parent)
+
+
+@dataclass(frozen=True)
+class FolderSummary:
+    videos: int
+    matches: int
+    folders: int
+
+    def text(self) -> str:
+        """"3 videos · 1 match · 2 folders"; "" for an empty folder."""
+        parts = [(self.videos, "video"), (self.matches, "match"), (self.folders, "folder")]
+        return " · ".join(f"{n} {word}{'es' if word == 'match' and n != 1 else 's' if n != 1 else ''}"
+                          for n, word in parts if n)
+
+
+def folder_summary(folder: str | os.PathLike[str]) -> FolderSummary | None:
+    """What a folder holds, one level deep (to show next to it while browsing); None if it
+    cannot be read."""
+    videos = matches = folders = 0
+    try:
+        with os.scandir(folder) as it:
+            for entry in it:
+                if entry.name.startswith("."):
+                    continue
+                if entry.name.endswith(MATCH_SUFFIX):
+                    matches += 1
+                elif entry.is_dir():
+                    folders += 1
+                elif os.path.splitext(entry.name)[1].lower() in VIDEO_EXTENSIONS:
+                    videos += 1
+    except OSError:
+        return None
+    return FolderSummary(videos, matches, folders)
 
 
 def check_creation_order(infos: Sequence[MediaInfo]) -> list[Issue]:
@@ -108,3 +178,20 @@ def make_source(info: MediaInfo, match_path: str | os.PathLike[str]) -> Source:
         fps=info.fps,
         pix_fmt=info.pix_fmt,
     )
+
+
+def new_match_file(infos: Sequence[MediaInfo], match_path: str | os.PathLike[str], *,
+                   kind: str = "singles", side_a: Sequence[str] = (), side_b: Sequence[str] = (),
+                   format_spec: dict | None = None) -> MatchFile:
+    """A new match over ``infos`` (in order). Blank names get their "Player N" defaults."""
+    per_side = 2 if kind == "doubles" else 1
+    match = default_match()
+    match["kind"] = kind
+    for side, given, base in (("A", side_a, 0), ("B", side_b, per_side)):
+        names = [n.strip() for n in given][:per_side]
+        names += [""] * (per_side - len(names))
+        match["sides"][side]["players"] = [n or f"Player {base + i + 1}"
+                                           for i, n in enumerate(names)]
+    if format_spec is not None:
+        match["format"] = dict(format_spec)
+    return MatchFile(sources=[make_source(i, match_path) for i in infos], match=match)
