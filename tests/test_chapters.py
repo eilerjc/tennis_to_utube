@@ -21,16 +21,19 @@ def chapters_for(events, total, cuts=(), settings=SETTINGS):
     return derive_chapters(events, kept, settings, plan.total_out_ms), plan
 
 
+MATCH = {"kind": "singles", "sides": {"A": {"players": ["Emma"]}, "B": {"players": ["Sara"]}}}
+
+
 def test_anchor_titles_number_sets_and_games():
-    events = [ev(0, "match_start"), ev(1, "set_start"), ev(2, "game_start", player="Emma"),
-              ev(3, "game_end", result="A"), ev(4, "game_start", player="Sara"),
+    events = [ev(0, "match_start"), ev(1, "set_start"), ev(2, "game_start", player="A1"),
+              ev(3, "game_end", result="A"), ev(4, "game_start", player="B1"),
               ev(5, "game_end", result="A"), ev(6, "set_end", result="A"),
               ev(7, "game_start"),  # set 2 without Set start
               ev(8, "game_end", result="A"), ev(9, "set_end", result="B"), ev(10, "set_start"),
               ev(11, "game_start"),
               ev(12, "score_state", details={"games": [4, 4]}), ev(13, "game_start"),
               ev(14, "score_state"), ev(15, "game_start")]
-    titles = anchor_titles(events)
+    titles = anchor_titles(events, MATCH)
     # Set scores after play has started are corrections, not chapters.
     assert [titles[e.id] for e in events if e.id in titles] == [
         "Set 1", "Set 1 · Game 1 — Emma serving", "Set 1 · Game 2 — Sara serving",
@@ -39,8 +42,8 @@ def test_anchor_titles_number_sets_and_games():
 
 def test_set_score_before_play_is_a_chapter():
     events = [ev(0, "score_state", details={"sets": [[6, 4]], "games": [3, 2]}),
-              ev(1, "game_start", player="Sara")]
-    assert list(anchor_titles(events).values()) == [
+              ev(1, "game_start", player="B1")]
+    assert list(anchor_titles(events, MATCH).values()) == [
         "Match in progress (6–4, 3–2)", "Set 2 · Game 6 — Sara serving"]
     unknown = [ev(0, "score_state"), ev(1, "game_start")]
     assert list(anchor_titles(unknown).values()) == ["Match in progress", "Game"]
@@ -126,3 +129,10 @@ def test_chapter_for_groups_by_event_time():
     assert chapter_for(chs, 60_000).title == "B"
     assert chapter_for(chs, 500_000).title == "C"
     assert chapter_for([ch(10, "late")], 5) is None
+
+
+def test_titles_without_names_show_defaults_or_refs():
+    events = [ev(0, "game_start", player="B1")]
+    assert list(anchor_titles(events, {"kind": "singles"}).values()) == [
+        "Set 1 · Game 1 — Player 2 serving"]
+    assert list(anchor_titles(events).values()) == ["Set 1 · Game 1 — B1 serving"]

@@ -1,5 +1,7 @@
 from tennis_to_utube.matchfile import default_match
-from tennis_to_utube.names import players, short_names, short_side_names, side_name
+from tennis_to_utube.names import (
+    parse_ref, partner, player_name, players, ref_side, short_names, short_side_names, side_name,
+)
 from tennis_to_utube.shortcuts import ACTIONS_BY_ID
 
 
@@ -52,3 +54,13 @@ def test_buttons_use_short_names():
     labels = short_side_names(m)
     assert ACTIONS_BY_ID["point_a"].button_text(labels) == "Point Alex J"
     assert ACTIONS_BY_ID["game_end_b"].button_text(labels) == "Game Sara P/Ana L"
+
+
+def test_player_references():
+    m = match(["Emma Smith", "Ana Perez"], ["Sara"], kind="doubles")
+    assert player_name(m, "A2") == "Ana Perez"
+    assert player_name(m, "B2") == "Player 4"
+    assert player_name(m, "A3") is None and player_name(m, "Emma") is None
+    assert parse_ref("B2") == ("B", 1) and parse_ref("C1") is None and parse_ref("A0") is None
+    assert ref_side("B1") == "B" and ref_side("A") == "A" and ref_side("x") is None
+    assert partner("A1") == "A2" and partner("B2") == "B1"

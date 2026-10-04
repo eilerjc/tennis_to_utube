@@ -1,5 +1,7 @@
 """Player names: defaults, full side names, and short names for buttons.
 
+Events refer to players by position, not name: ``"A1"``, ``"A2"`` (side A's players in
+the order entered), ``"B1"``, ``"B2"``. Renaming a player therefore updates every event.
 Names are stored and exported exactly as typed. When none were entered, players are
 "Player 1" and "Player 2" (doubles: 1 & 2 on side A, 3 & 4 on side B); these are display
 defaults and are not written to the match file.
@@ -26,6 +28,38 @@ def players(match: dict[str, Any], side: str) -> list[str]:
     count = max(per_side, len(entered))
     return [entered[i] if i < len(entered) and str(entered[i]).strip() else f"Player {base + i + 1}"
             for i in range(count)]
+
+
+def parse_ref(ref: Any) -> tuple[str, int] | None:
+    """``"B2"`` → ``("B", 1)`` (side, 0-based index); None if not a player reference."""
+    if (isinstance(ref, str) and len(ref) >= 2 and ref[0] in SIDES and ref[1:].isdigit()
+            and int(ref[1:]) >= 1):
+        return ref[0], int(ref[1:]) - 1
+    return None
+
+
+def ref_side(ref: Any) -> str | None:
+    """Side of a player reference, or of a bare side ("A"/"B")."""
+    if ref in SIDES:
+        return ref
+    parsed = parse_ref(ref)
+    return parsed[0] if parsed else None
+
+
+def partner(ref: str) -> str:
+    """Doubles partner: A1 ↔ A2."""
+    side, i = parse_ref(ref)
+    return f"{side}{2 - i}" if i in (0, 1) else ref
+
+
+def player_name(match: dict[str, Any], ref: str) -> str | None:
+    """Full name for a reference ("A1" → "Emma Smith"); None if there is no such player."""
+    parsed = parse_ref(ref)
+    if parsed is None:
+        return None
+    side, i = parsed
+    names = players(match, side)
+    return names[i] if i < len(names) else None
 
 
 def side_name(match: dict[str, Any], side: str) -> str:

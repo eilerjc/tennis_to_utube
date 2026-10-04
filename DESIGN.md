@@ -91,7 +91,8 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
       "id": "e_0001",      // stable id, never reused
       "t_ms": 734512,
       "type": "game_start",
-      "side": "A", "player": "Emma",   // who (server here); optional
+      "side": "A", "player": "A1",     // who (server here); optional. Players are referred
+                                       // to by position (A1, A2, B1, B2), so renames apply everywhere
       "result": null,      // e.g. "A" | "B" | "unknown" for outcome events
       "observed": null,    // [data only] what the video shows: "in"|"out"|"net"|"unclear"...
       "called": null,      // [data only] what was ruled: "in"|"out"|"let"|"replay"|"no_call"
