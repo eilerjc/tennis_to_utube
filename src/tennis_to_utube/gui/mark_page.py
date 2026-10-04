@@ -8,8 +8,8 @@ from typing import Callable
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QHBoxLayout, QInputDialog, QLabel, QMenu, QMessageBox, QPushButton,
-    QScrollArea, QSizePolicy, QSplitter, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QHBoxLayout, QInputDialog, QLabel, QMenu, QMessageBox, QPushButton,
+    QScrollArea, QSplitter, QVBoxLayout, QWidget,
 )
 
 from .. import catalog, matchfile, names, playback, timeline_view
@@ -35,7 +35,7 @@ def _button(text: str, tip: str = "") -> QPushButton:
 
 
 class TransportBar(QWidget):
-    """Skip/frame/play buttons, speed buttons (no keys, agreed) and the time."""
+    """Skip/frame/play buttons, a speed drop-down (no keys, agreed) and the time."""
 
     def __init__(self, speeds: list[float], parent: QWidget | None = None):
         super().__init__(parent)
@@ -52,17 +52,14 @@ class TransportBar(QWidget):
             self.labels[action_id] = text
             layout.addWidget(b)
         layout.addSpacing(16)
-        self.speed_group = QButtonGroup(self)
-        self.speed_group.setExclusive(True)
-        self.speed_buttons: dict[float, QPushButton] = {}
-        for s in speeds:
-            b = _button(f"{s:g}×", "Playback speed")
-            b.setCheckable(True)
-            b.setFixedWidth(52)
-            b.setSizePolicy(b.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Expanding)
-            self.speed_group.addButton(b)
-            self.speed_buttons[s] = b
-            layout.addWidget(b)
+        layout.addWidget(QLabel("Speed"))
+        self.speed = QComboBox()
+        self.speed.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # keys stay with the video
+        self.speed.setToolTip("Playback speed")
+        for sp in speeds:
+            self.speed.addItem(f"{sp:g}×", sp)
+        self.speed.setMinimumHeight(44)
+        layout.addWidget(self.speed)
         layout.addStretch(1)
         self.time = QLabel("0:00:00.000")
         self.time.setStyleSheet("font-family: monospace; font-size: 15pt")
@@ -75,8 +72,14 @@ class TransportBar(QWidget):
             b.setText(f"{self.labels[action_id]}\n[{key_text(keys[0])}]" if keys else self.labels[action_id])
 
     def show_speed(self, speed: float) -> None:
-        for s, b in self.speed_buttons.items():
-            b.setChecked(abs(s - speed) < 1e-6)
+        i = next((i for i in range(self.speed.count())
+                  if abs(self.speed.itemData(i) - speed) < 1e-6), -1)
+        if i < 0:  # a speed not in the list (set elsewhere): show it anyway
+            self.speed.addItem(f"{speed:g}×", speed)
+            i = self.speed.count() - 1
+        self.speed.blockSignals(True)
+        self.speed.setCurrentIndex(i)
+        self.speed.blockSignals(False)
 
 
 class MarkPage(QWidget):
@@ -198,8 +201,8 @@ class MarkPage(QWidget):
         self.side_layout.addWidget(self.buttons)
         for action_id, b in self.transport.buttons.items():
             b.clicked.connect(call(handlers[action_id]))
-        for s, b in self.transport.speed_buttons.items():
-            b.clicked.connect(lambda _c=False, s=s: self.player.set_speed(s))
+        self.transport.speed.activated.connect(
+            lambda i: self.player.set_speed(self.transport.speed.itemData(i)))
         self.player.positionChanged.connect(self._on_position)
         self.player.speedChanged.connect(self.transport.show_speed)
         self.transport.show_speed(1.0)

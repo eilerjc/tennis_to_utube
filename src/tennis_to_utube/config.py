@@ -52,7 +52,7 @@ DEFAULTS: dict[str, Any] = {
     # Short player names on buttons: first N letters of the first name + last initial.
     "names": {"short_first_letters": 4},
     "playback": {
-        "speeds": [0.25, 0.5, 1.0, 1.5, 2.0],
+        "speeds": [0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 8.0],
         "skip_short_ms": 1000,
         "skip_long_ms": 5000,
         # Marks are moved earlier by this much real time (scaled by playback speed) to make

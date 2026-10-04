@@ -330,7 +330,7 @@ scales). Steps along the top: **1 Files → 2 Mark → 3 Trim → 4 Export**. Ma
 │               Video (mpv)                ├────────────────────┤
 │                                          │ event buttons      │
 ├──────────────────────────────────────────┤ (key rows,         │
-│ transport · speed buttons · time         │  suggested lit)    │
+│ transport · speed drop-down · time       │  suggested lit)    │
 ├──────────────────────────────────────────┴────────────────────┤
 │ overview bar (whole match)                                     │
 │ detail strip (zoomable)                                        │
@@ -342,8 +342,9 @@ scales). Steps along the top: **1 Files → 2 Mark → 3 Trim → 4 Export**. Ma
 Runs from source for now: `run.bat` sets up `.venv` on first use (one-click .exe later).
 
 **Playback** (all keys remappable)
-- Speeds 0.25×, 0.5×, 1×, 1.5×, 2× (maybe 4× for scanning); list is a setting; set with
-  **buttons only** (no keys — agreed with the owner).
+- Speeds 0.25×, 0.5×, 1×, 1.5×, 2×, 4×, 8× (4× and 8× for scanning); list is a setting
+  (`playback.speeds`); chosen from a **drop-down** next to the transport buttons (no keys —
+  agreed with the owner).
 - Skip back/forward 5 s and 1 s (distances configurable); jump to previous/next event.
 - Frame step forward and back with hold-to-repeat; also the **mouse wheel over the video,
   only while paused** (does nothing while playing). (Back-stepping long-GOP HEVC is slower;

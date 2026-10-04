@@ -64,11 +64,15 @@ def test_jump_between_events(window):
     assert page.position() == 5_000  # nothing earlier
 
 
-def test_speed_buttons(window):
-    page = window.mark
-    page.transport.speed_buttons[0.5].click()
-    assert page.player.speed() == 0.5 and page.transport.speed_buttons[0.5].isChecked()
-    assert not page.transport.speed_buttons[1.0].isChecked()
+def test_speed_drop_down(window):
+    combo = window.mark.transport.speed
+    assert [combo.itemText(i) for i in range(combo.count())] == [
+        "0.25×", "0.5×", "1×", "1.5×", "2×", "4×", "8×"]
+    assert combo.currentText() == "1×"
+    combo.activated.emit(6)
+    assert window.mark.player.speed() == 8.0
+    window.mark.player.set_speed(0.5)  # changed elsewhere: the drop-down follows
+    assert combo.currentText() == "0.5×"
 
 
 def test_wheel_steps_frames_only_when_paused(window, qapp):
