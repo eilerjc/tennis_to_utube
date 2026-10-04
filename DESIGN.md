@@ -404,8 +404,15 @@ Runs from source for now: `run.bat` sets up `.venv` on first use (one-click .exe
 ## 12. File selection and navigation
 
 - Remember the last folder; open there next time.
-- Custom browser panel (Qt's standard dialog can't do siblings): path bar, **Up**, dropdown
-  of **sibling folders**, recent folders, pinned favorites.
+- Explorer-like browser built into the Files step: **Back / Forward / Up / Refresh** (also
+  Alt+←/→/↑, F5, mouse back/forward buttons, Backspace), an address bar with folder
+  completion (Ctrl+L), and **Pin folder**. Left: **Quick access** (pinned, then recent; same
+  names get the parent folder added) and a **folder tree** (drives and network drives; a
+  click opens a folder, arrow keys open it after a short pause; follows the current folder).
+  Right: the current folder's **subfolders and match files**, with what each subfolder holds
+  ("2 videos · 1 match", read in the background; folders with a match in bold) and the
+  modified date. Double-click or Enter goes into a folder or opens a match; Up selects the
+  folder you came from.
 - Tick files for a match; show name, duration, size, and whether codec params match the
   first file (lossless join requires a match). App proposes order (recording number, then
   chapter; cross-checked with `creation_time`); user reorders by drag or up/down buttons.

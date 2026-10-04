@@ -9,12 +9,16 @@
 5. Trim: untick a cut, Make video, play the result.
 6. Export: paste any video id, look at the chapters and the links file.
 
+## Changed after the first Windows look
+- Files: folder browsing is now Explorer-like (tree, Quick access, subfolders with what they
+  hold, Back/Forward/Up). Check it on `W:\video`, especially speed on the network drive.
+
 ## Open questions
-- Wheel over the video on Windows (mpv's own window may swallow it) — works?
 - Tiebreak changeovers are only cut when a serve is marked after the change of ends (no
   other sign of when play resumes). OK, or another rule (e.g. a fixed length)?
 
 ## Answered (2026-10-04)
+- The wheel works on Windows over the video and the timeline.
 - One-frame-late seeks don't matter. All assumptions below are approved.
 - Changeovers now also come from points (anchored on the point ending an odd game).
 - Tiebreak points are kept in set scores (`7-6(5)`, `[10-8]`).

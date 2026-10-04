@@ -83,14 +83,52 @@ def list_matches(folder: str | os.PathLike[str]) -> list[Path]:
         return []
 
 
-def sibling_folders(folder: str | os.PathLike[str]) -> list[Path]:
-    """Folders next to ``folder`` (including itself), naturally sorted; hidden ones skipped."""
-    parent = Path(folder).parent
+def list_subfolders(folder: str | os.PathLike[str]) -> list[Path]:
+    """Folders inside ``folder``, naturally sorted ("match 2" before "match 10"); hidden
+    ones skipped."""
     try:
-        dirs = [p for p in parent.iterdir() if p.is_dir() and not p.name.startswith(".")]
+        dirs = [p for p in Path(folder).iterdir() if not p.name.startswith(".") and p.is_dir()]
     except OSError:
         return []
     return sorted(dirs, key=lambda p: _natural_key(p.name))
+
+
+def sibling_folders(folder: str | os.PathLike[str]) -> list[Path]:
+    """Folders next to ``folder`` (including itself), naturally sorted; hidden ones skipped."""
+    return list_subfolders(Path(folder).parent)
+
+
+@dataclass(frozen=True)
+class FolderSummary:
+    videos: int
+    matches: int
+    folders: int
+
+    def text(self) -> str:
+        """"3 videos · 1 match · 2 folders"; "" for an empty folder."""
+        parts = [(self.videos, "video"), (self.matches, "match"), (self.folders, "folder")]
+        return " · ".join(f"{n} {word}{'es' if word == 'match' and n != 1 else 's' if n != 1 else ''}"
+                          for n, word in parts if n)
+
+
+def folder_summary(folder: str | os.PathLike[str]) -> FolderSummary | None:
+    """What a folder holds, one level deep (to show next to it while browsing); None if it
+    cannot be read."""
+    videos = matches = folders = 0
+    try:
+        with os.scandir(folder) as it:
+            for entry in it:
+                if entry.name.startswith("."):
+                    continue
+                if entry.name.endswith(MATCH_SUFFIX):
+                    matches += 1
+                elif entry.is_dir():
+                    folders += 1
+                elif os.path.splitext(entry.name)[1].lower() in VIDEO_EXTENSIONS:
+                    videos += 1
+    except OSError:
+        return None
+    return FolderSummary(videos, matches, folders)
 
 
 def check_creation_order(infos: Sequence[MediaInfo]) -> list[Issue]:

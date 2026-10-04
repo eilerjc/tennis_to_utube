@@ -24,3 +24,16 @@ def test_round_trip_and_bad_files(tmp_path):
     path.write_text('{"recent": "nope", "favorites": [1, "a"]}', encoding="utf-8")
     assert load_state(path) == AppState(favorites=["a"])
     assert load_state(tmp_path / "missing.json") == AppState()
+
+
+def test_history_back_and_forward():
+    from tennis_to_utube.appstate import History
+
+    h = History()
+    assert h.go_back() is None
+    for f in ("/a", "/b", "/b", "/c"):
+        h.visit(f)
+    assert h.go_back() == "/b" and h.go_back() == "/a" and h.go_back() is None
+    assert h.go_forward() == "/b"
+    h.visit("/d")  # a new visit clears Forward
+    assert h.go_forward() is None and h.back == ["/a", "/b"]

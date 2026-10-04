@@ -40,6 +40,40 @@ class AppState:
         return True
 
 
+class History:
+    """Back/Forward through visited folders, like a file browser (not saved)."""
+
+    def __init__(self) -> None:
+        self.current: str | None = None
+        self.back: list[str] = []
+        self.forward: list[str] = []
+
+    def visit(self, folder: str | os.PathLike[str]) -> None:
+        folder = str(folder)
+        if folder == self.current:
+            return
+        if self.current is not None:
+            self.back.append(self.current)
+        self.current = folder
+        self.forward.clear()
+
+    def go_back(self) -> str | None:
+        if not self.back:
+            return None
+        if self.current is not None:
+            self.forward.append(self.current)
+        self.current = self.back.pop()
+        return self.current
+
+    def go_forward(self) -> str | None:
+        if not self.forward:
+            return None
+        if self.current is not None:
+            self.back.append(self.current)
+        self.current = self.forward.pop()
+        return self.current
+
+
 def state_path() -> Path:
     return user_config_dir() / STATE_FILENAME
 

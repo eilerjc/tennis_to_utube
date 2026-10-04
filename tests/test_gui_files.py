@@ -65,24 +65,81 @@ def test_create_match_from_folder(qapp, window, tmp_path, config_dir):
     assert (config_dir / "state.json").exists() and window.state.last_folder == str(folder)
     # the existing match is offered when the folder is opened again
     page.go_to(folder)
-    assert page.matches.count() == 1
+    assert [p.name for p in page.matches] == ["GX010008.match.json"]
 
 
-def test_navigation_and_pins(qapp, window, tmp_path):
+def contents_names(page):
+    return [page.contents.topLevelItem(i).text(0) for i in range(page.contents.topLevelItemCount())]
+
+
+def contents_item(page, name):
+    return next(page.contents.topLevelItem(i) for i in range(page.contents.topLevelItemCount())
+                if page.contents.topLevelItem(i).text(0) == name)
+
+
+def test_browsing_subfolders(qapp, window, tmp_path):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
     root = tmp_path / "videos"
-    for name in ("a", "b", "c"):
+    for name in ("match 10", "match 2", ".hidden"):
+        (root / name).mkdir(parents=True)
+    (root / "match 2" / "GX010001.MP4").write_bytes(b"")
+    (root / "match 2" / "GX010001.match.json").write_text("{}")
+    (root / "loose.match.json").write_text("{}")
+    page = window.files
+    page.go_to(root)
+    # subfolders first (natural order), then match files; what each folder holds, in the background
+    assert contents_names(page) == ["match 2", "match 10", "loose.match.json"]
+    assert [p.name for p in page.matches] == ["loose.match.json"]
+    wait_for(qapp, lambda: contents_item(page, "match 10").text(1) != "…")
+    assert contents_item(page, "match 2").text(1) == "1 video · 1 match"
+    assert contents_item(page, "match 2").font(0).bold()
+    assert contents_item(page, "match 10").text(1) == "empty"
+    # double-click (or Enter) goes into a folder
+    page.contents.itemActivated.emit(contents_item(page, "match 2"), 0)
+    assert page.folder == (root / "match 2").resolve()
+    assert page.tree.currentIndex().isValid()
+    assert page.fs_model.filePath(page.tree.currentIndex()) == str(page.folder)
+    # Up selects the folder we came from; Back/Forward
+    page.go_up()
+    assert page.folder == root.resolve() and page.contents.currentItem().text(0) == "match 2"
+    page.go_back()
+    assert page.folder == (root / "match 2").resolve()
+    page.go_forward()
+    assert page.folder == root.resolve() and not page.forward_button.isEnabled()
+    # Enter on the selected folder
+    page.contents.setCurrentItem(contents_item(page, "match 10"))
+    page.open_button.click()
+    assert page.folder == (root / "match 10").resolve()
+    # a click in the folder tree opens that folder
+    page._on_tree_clicked(page.fs_model.index(str(root / "match 2")))
+    assert page.folder == (root / "match 2").resolve()
+    # mouse back button
+    QTest.mouseClick(page.contents.viewport(), Qt.MouseButton.BackButton)
+    assert page.folder == (root / "match 10").resolve()
+
+
+def test_quick_access_and_pins(qapp, window, tmp_path):
+    root = tmp_path / "videos"
+    for name in ("a", "b"):
         (root / name).mkdir(parents=True)
     page = window.files
+    page.go_to(root / "a")
     page.go_to(root / "b")
-    assert [page.siblings.itemText(i) for i in range(page.siblings.count())] == ["a", "b", "c"]
-    assert page.siblings.currentText() == "b"
     page._toggle_favorite()
-    assert page.favorites.count() == 1 and "Unpin" in page.favorite_button.text()
-    page.up_button.click()
-    assert page.folder == root.resolve()
-    assert page.recent.itemText(0) == "videos"
+    assert "Unpin" in page.favorite_button.text()
+    texts = [page.quick.item(i).text() for i in range(page.quick.count())]
+    assert texts[:2] == ["Pinned", "★ b"] and texts[2:5] == ["Recent", "b", "a"]
+    page._on_quick_clicked(page.quick.item(4))
+    assert page.folder == (root / "a").resolve() and "Pin folder" in page.favorite_button.text()
+    page._on_quick_clicked(page.quick.item(0))  # a heading: nothing happens
+    assert page.folder == (root / "a").resolve()
+    (root / "c" / "b").mkdir(parents=True)  # another "b": the parent tells them apart
+    page.go_to(root / "c" / "b")
+    assert page.quick.item(3).text() == "b  (c)" and page.quick.item(5).text() == "b  (videos)"
     page.go_to(root / "missing")
-    assert "Not a folder" in page.notes.text()
+    assert "Not a folder" in page.notes.text() and page.folder == (root / "c" / "b").resolve()
 
 
 def test_open_match_reports_missing_videos(qapp, window, tmp_path, monkeypatch):

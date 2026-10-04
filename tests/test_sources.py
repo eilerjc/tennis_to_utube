@@ -93,3 +93,21 @@ def test_new_match_file(tmp_path):
     assert mf.match["kind"] == "doubles" and mf.match["format"] == {"preset": "pro10"}
     single = new_match_file(infos[:1], tmp_path / "m.match.json")
     assert single.match["sides"]["B"]["players"] == ["Player 2"]
+
+
+def test_subfolders_and_summaries(tmp_path):
+    from tennis_to_utube.sources import folder_summary, list_subfolders
+
+    for name in ("match 10", "match 2", ".hidden"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "match 2" / "GX010001.MP4").write_bytes(b"")
+    (tmp_path / "match 2" / "GX020001.mp4").write_bytes(b"")
+    (tmp_path / "match 2" / "GX010001.match.json").write_text("{}")
+    (tmp_path / "match 2" / "notes.txt").write_text("")
+    (tmp_path / "match 2" / "sub").mkdir()
+    assert [p.name for p in list_subfolders(tmp_path)] == ["match 2", "match 10"]
+    s = folder_summary(tmp_path / "match 2")
+    assert (s.videos, s.matches, s.folders) == (2, 1, 1)
+    assert s.text() == "2 videos · 1 match · 1 folder"
+    assert folder_summary(tmp_path / "match 10").text() == ""
+    assert folder_summary(tmp_path / "nope") is None and list_subfolders(tmp_path / "nope") == []
