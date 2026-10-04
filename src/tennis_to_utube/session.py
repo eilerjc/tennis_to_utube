@@ -6,6 +6,7 @@ the whole match file (small), but never moves the event-id counter back, so ids 
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from .flow import Flow, analyze_match, flow_at
 from .matchfile import Event, MatchFile
 from .scoring import Analysis, ScoreView, other
 from .shortcuts import ACTIONS_BY_ID
+from .timeline import Timeline
+from .trim import RULES, Cut, propose_cuts
 
 MAX_UNDO = 500
 
@@ -59,6 +62,42 @@ class Session:
 
     def event(self, event_id: str) -> Event:
         return self.mf.event(event_id)
+
+    @property
+    def total_ms(self) -> int:
+        return Timeline.from_sources(self.mf.sources).total_ms if self.mf.sources else 0
+
+    # -- trim choices (stored in the match file's settings.trim) ----------------------
+
+    def _trim_settings(self) -> dict[str, Any]:
+        trim = self.mf.settings.get("trim")
+        return trim if isinstance(trim, dict) else {}
+
+    def trim_rules(self) -> list[str]:
+        rules = self._trim_settings().get("rules")
+        if not isinstance(rules, list):
+            rules = list(self.config.get("trim.rules")) if self.config else list(RULES)
+        return [r for r in rules if r in RULES]
+
+    def cuts(self) -> list[Cut]:
+        """Proposed cuts for the chosen rules; unticked ones have ``enabled=False``."""
+        unticked = set(self._trim_settings().get("unticked", []))
+        return [dataclasses.replace(c, enabled=c.key not in unticked)
+                for c in propose_cuts(self.mf.events, self.total_ms, self.trim_rules())]
+
+    def set_trim_rules(self, rules: list[str]) -> None:
+        self._before_edit()
+        self.mf.settings.setdefault("trim", {})["rules"] = [r for r in RULES if r in rules]
+        self._after_edit()
+
+    def set_cut_enabled(self, key: str, enabled: bool) -> None:
+        self._before_edit()
+        trim = self.mf.settings.setdefault("trim", {})
+        unticked = [k for k in trim.get("unticked", []) if k != key]
+        if not enabled:
+            unticked.append(key)
+        trim["unticked"] = unticked
+        self._after_edit()
 
     # -- undo ----------------------------------------------------------------------
 

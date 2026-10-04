@@ -50,3 +50,14 @@ Assumptions and open points to go through together. Newest at the bottom of each
   only filled parts are stored. Rules change dialog: preset + no-ad + match-tiebreak tick.
   Ending state: final sets ("6-4 3-6 [10-8]"), stored with `"entered": true`.
 - Buttons show short names ("Point Emma S") and their key; menu-only events show no key.
+
+## GUI step 4 — Timeline bars
+- Overview (whole match) + detail strip (opens at 2 minutes wide; wheel zooms around the
+  cursor; down to 2 s). "Follow playhead" (on by default) pages the strip when the playhead
+  nears an edge. The overview shows the strip's window as a blue box.
+- Tick colours: points green (A) / red (B) / grey (unknown); serve blue; games orange; sets
+  brown; coaching teal; notes yellow; match-level indigo. Bands: sets (top row), games.
+- Cut proposals (from the trim rules) are shaded grey on both bars; red triangles = issues.
+- **Unticked cuts are stored in the match file** (`settings.trim.unticked`, by cut key), and
+  the chosen rules in `settings.trim.rules` — so the trim choices survive reopening.
+- Click picks a tick within 5 px; Ctrl+drag moves (refused while locked); Esc cancels.

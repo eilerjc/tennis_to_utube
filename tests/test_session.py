@@ -108,3 +108,26 @@ def test_point_server_side_in_tiebreak():
         return ScoreView((), (6, 6), points, "A", tb, None, None, True, PRESETS["standard"])
     assert [point_server_side(view((k, 0), True)) for k in range(5)] == ["A", "B", "B", "A", "A"]
     assert point_server_side(view((3, 0), False)) == "A"
+
+
+def test_cut_choices_are_stored_in_the_match(tmp_path):
+    from tennis_to_utube.matchfile import Source
+
+    s = session(tmp_path)
+    s.mf.sources = [Source("GX010001.MP4", 600_000)]
+    s.mark("match_start", 60_000)
+    s.mark("game_start", 61_000)
+    s.mark("game_end_a", 200_000)
+    s.mark("game_start", 290_000)
+    s.mark("match_end", 500_000)
+    assert [c.rule for c in s.cuts()] == ["warmup", "changeovers", "after_match"]
+    key = s.cuts()[1].key
+    s.set_cut_enabled(key, False)
+    assert [c.enabled for c in s.cuts()] == [True, False, True]
+    assert s.mf.settings["trim"]["unticked"] == [key]
+    s.set_trim_rules(["after_match", "warmup", "bogus"])
+    assert s.trim_rules() == ["warmup", "after_match"]
+    assert [c.rule for c in s.cuts()] == ["warmup", "after_match"]
+    s.undo()
+    s.set_cut_enabled(key, True)
+    assert all(c.enabled for c in s.cuts())

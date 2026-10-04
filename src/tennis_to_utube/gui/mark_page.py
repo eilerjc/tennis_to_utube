@@ -7,11 +7,11 @@ from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QHBoxLayout, QInputDialog, QLabel, QPushButton, QScrollArea, QSplitter,
-    QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QHBoxLayout, QInputDialog, QLabel, QPushButton, QScrollArea,
+    QSplitter, QVBoxLayout, QWidget,
 )
 
-from .. import catalog, matchfile, names, playback
+from .. import catalog, matchfile, names, playback, timeline_view
 from ..config import Config
 from ..matchfile import MatchFile
 from ..session import LockedError, Session
@@ -19,6 +19,7 @@ from ..shortcuts import ACTIONS, Shortcuts
 from .actions import build_actions, call, key_text
 from .event_panel import EndingStateDialog, EventButtons, RulesDialog, ScorePanel, ScoreStateDialog
 from .player import PlayerBase, create_player
+from .timeline_bar import TimelineBar
 
 AUTOSAVE_DELAY_MS = 1500
 
@@ -110,6 +111,26 @@ class MarkPage(QWidget):
         self.bottom = QWidget()
         self.bottom_layout = QVBoxLayout(self.bottom)
         self.bottom_layout.setContentsMargins(0, 0, 0, 0)
+        self.overview = TimelineBar(zoomable=False)
+        self.detail = TimelineBar(zoomable=True)
+        self.follow = QCheckBox("Follow playhead")
+        self.follow.setChecked(True)
+        self.follow.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        hint = QLabel("Drag: scrub · click a mark: select · Ctrl+drag: move a mark · wheel: zoom")
+        hint.setStyleSheet("color: #757575")
+        bar_row = QHBoxLayout()
+        bar_row.addWidget(self.follow)
+        bar_row.addStretch(1)
+        bar_row.addWidget(hint)
+        self.bottom_layout.addWidget(self.overview)
+        self.bottom_layout.addWidget(self.detail)
+        self.bottom_layout.addLayout(bar_row)
+        for bar in (self.overview, self.detail):
+            bar.seekRequested.connect(self._seek_from_bar)
+            bar.eventClicked.connect(self.select_event)
+            bar.eventMoved.connect(self.move_event)
+            bar.message.connect(self.message)
+        self.detail.viewChanged.connect(self._update_window_marker)
 
         top = QSplitter(Qt.Orientation.Horizontal)
         top.addWidget(left)
@@ -191,6 +212,42 @@ class MarkPage(QWidget):
         total = self.player.duration_ms
         self.transport.time.setText(f"{playback.clock_text(t_ms)} / {playback.clock_text(total)}")
         self._show_flow(t_ms)
+        self.overview.set_position(t_ms)
+        self.detail.set_position(t_ms, follow=self.follow.isChecked())
+
+    def _update_window_marker(self) -> None:
+        v = self.detail.view
+        self.overview.window_marker = (v.start_ms, v.start_ms + v.span_ms)
+        self.overview.update()
+
+    def _seek_from_bar(self, t_ms: int, precise: bool) -> None:
+        self.player.seek(t_ms, precise)
+
+    def select_event(self, event_id: str) -> None:
+        if self.session is None:
+            return
+        self.selected_id = event_id
+        self.player.set_paused(True)
+        self.player.seek(self.session.event(event_id).t_ms)
+        self._refresh_bars()
+
+    def move_event(self, event_id: str, t_ms: int) -> None:
+        if self.session is None:
+            return
+        self.selected_id = event_id
+        self._edit(lambda: self.session.move(event_id, t_ms), f"Moved to {playback.clock_text(t_ms)}")
+
+    def _refresh_bars(self) -> None:
+        if self.session is None:
+            return
+        mf, total = self.session.mf, self.session.total_ms
+        bands = timeline_view.bands(mf.events, total)
+        cuts = [(c.start_ms, c.end_ms) for c in self.session.cuts() if c.enabled]
+        for bar in (self.overview, self.detail):
+            bar.selected = self.selected_id
+            bar.locked = self.session.locked
+            bar.set_data(mf.events, bands, cuts, self.session.analysis.issues, total)
+        self._update_window_marker()
 
     def _show_flow(self, t_ms: int) -> None:
         if self.session is None:
@@ -202,6 +259,7 @@ class MarkPage(QWidget):
     def refresh(self) -> None:
         """Redraw everything that depends on the events."""
         self._show_flow(self.position())
+        self._refresh_bars()
         locked = self.session is not None and self.session.locked
         self.buttons.buttons["lock_events"].setText(
             ("Unlock events" if locked else "Lock events") + "\n[" +
@@ -319,6 +377,7 @@ class MarkPage(QWidget):
             self.player.set_paused(True)
             self.player.seek(t)
             self.selected_id = next(e.id for e in self.match.sorted_events() if e.t_ms == t)
+            self._refresh_bars()
 
     def shutdown(self) -> None:
         self._autosave.stop()
