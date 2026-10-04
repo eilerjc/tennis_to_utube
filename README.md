@@ -18,12 +18,13 @@ chapters and per-event links. See `DESIGN.md` for the agreed design.
    `mpv-dev-x86_64-...` archive).
 4. Double-click **`run.bat`**. The first start creates `.venv` and installs what is needed.
 
-Settings (`config.toml`) and keys (`shortcuts.toml`) can be overridden in
-`%APPDATA%\tennis_to_utube\`; see `src/tennis_to_utube/config.py` and `shortcuts.py`.
+Settings can be overridden in `%APPDATA%\tennis_to_utube\`: `config.toml` (the app),
+`shortcuts.toml` (keys) and `trim.toml` (the Trim tool — copy `docs\trim.example.toml`);
+see `src/tennis_to_utube/config.py` and `shortcuts.py`.
 
 ## Using it
 
-1. **Files** — go to the match folder (path bar, Up, siblings, recent, pinned). Tick the
+1. **Files** — find the match folder (folder tree, Quick access, subfolders; Back/Up). Tick the
    videos (GoPro chapters are put in order), type the players, pick the format, **Create
    match**. Or open a match file already in the folder.
 2. **Mark** — play the video and press keys (or click buttons) as things happen. Left hand:
@@ -38,8 +39,20 @@ Settings (`config.toml`) and keys (`shortcuts.toml`) can be overridden in
    anything that doesn't add up.
 3. **Trim** — tick what to remove (warm-up, changeovers, set breaks, after the match),
    untick single cuts to keep them, **Make video** (lossless, minutes for a full match).
-4. **Export** — after uploading, paste the YouTube link. Copy the chapters into the video
-   description; **Save links** writes a Markdown and a CSV list of links to every mark.
+   This runs the **Trim tool**, which also writes the trimmed video's chapters and links;
+   after uploading the trimmed video, paste its YouTube link here to put it in the links.
+4. **Export** — the **full recording**: after uploading it, paste its YouTube link. Copy
+   the chapters into the video description; **Save links** writes a Markdown and a CSV list
+   of links to every mark.
+
+## Trim tool
+
+The Trim step uses it, and it also runs on its own: drop a `.match.json` file on
+`trim.bat` (or `python -m tennis_to_utube.trimtool file.match.json`). It makes
+`<match> trimmed.mp4` and `<match> trimmed chapters.txt` / `links.md` / `links.csv` next to
+the match file. `--cuts` lists the cuts only; `--links-only --video-id <link>` rewrites the
+links once the trimmed video is on YouTube. Its settings — what is cut, the serve lead-in,
+the trimmed video's link lead-ins — are in `trim.toml` (see `docs\trim.example.toml`).
 
 ## Statistics
 

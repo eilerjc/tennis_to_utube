@@ -96,3 +96,13 @@ def test_trim_rules_from_trim_config(tmp_path):
     path.write_text('rules = ["after_match"]\n', encoding="utf-8")
     s = Session(MatchFile(), tmp_path / "m.match.json", trim_config=load_trim_config(path))
     assert s.trim_rules() == ["after_match"]
+
+
+def test_trim_example_matches_the_defaults():
+    import tomllib
+    from pathlib import Path
+
+    from tennis_to_utube.config import TRIM_DEFAULTS
+
+    example = Path(__file__).parent.parent / "docs" / "trim.example.toml"
+    assert tomllib.loads(example.read_text(encoding="utf-8")) == TRIM_DEFAULTS

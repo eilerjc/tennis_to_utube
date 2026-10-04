@@ -17,6 +17,14 @@
   server…** button in Serve. Score stays on top, buttons scroll. Wheel forward = next
   frame. Speed is a drop-down with 4× and 8×.
 
+## Trim is its own tool now
+- `trim.bat` / the Trim step runs `tennis_to_utube.trimtool` (own `trim.toml`; example in
+  `docs\trim.example.toml`). It makes the trimmed video and writes **trimmed** chapters
+  and links; paste the trimmed video's YouTube link on the Trim step to fill them in.
+- Export is now always the **full recording** (its own YouTube link).
+- Assumption: the match-file override `settings.lead_in_ms` (none set by the GUI today)
+  applies to both the full and the trimmed links.
+
 ## Open questions
 - None right now.
 

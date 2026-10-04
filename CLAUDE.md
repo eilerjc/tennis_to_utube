@@ -21,8 +21,9 @@ update `DESIGN.md` in the same change.
   `chapters`, `youtube` (export), `shortcuts` (actions + key layout), `names` (player
   names, rename, short names), `scoring` (score engine), `flow` (state at the playhead),
   `session` (open match: edits, undo, cuts, output), `playback` (time/seek rules shared
-  with mpv), `timeline_view` (bands, zoom), `appstate` (remembered folders), `stats` (CSV statistics
-  command, no GUI).
+  with mpv), `timeline_view` (bands, zoom), `appstate` (remembered folders). Separate tools (own
+  config, no GUI): `trimtool` (makes the trimmed video + its chapters/links; `trim.toml`;
+  the GUI's Trim step runs it as a process), `stats` (CSV statistics).
 - `src/tennis_to_utube/gui/` — PySide6: `app` (entry), `main_window` (four steps),
   `files_page`, `mark_page` (+ `player`, `event_panel`, `timeline_bar`, `lists`,
   `actions`), `trim_page`, `export_page`, `worker` (background jobs). Keep logic in the

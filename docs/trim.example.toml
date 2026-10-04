@@ -1,0 +1,23 @@
+# Trim tool settings. Copy to %APPDATA%\tennis_to_utube\trim.toml and keep only the lines
+# you want to change (everything else uses these defaults).
+
+# What is cut by default (a match can choose its own on the Trim step):
+# warmup, changeovers, set_breaks, after_match
+rules = ["warmup", "changeovers", "set_breaks", "after_match"]
+
+# Tiebreak changeover cuts stop this long before the serve that resumes play.
+serve_lead_in_ms = 3000
+
+# The trimmed video's chapters: one is added after this long without a Game/Set start.
+chapter_gap_ms = 600000
+
+# The trimmed video's chapters and links: a link starts this long before its event
+# (never before the start of its kept part). One line per event type, if wanted.
+[lead_in_ms]
+default = 5000
+# ace = 3000
+# winner = 8000
+
+[output]
+# File name of the made video, next to the match file ({stem} = the match name).
+name = "{stem} trimmed.mp4"
