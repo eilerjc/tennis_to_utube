@@ -476,7 +476,9 @@ class TrimResult:
 
 
 _WARN_RE = re.compile(r"non-monotonic|invalid|error|corrupt", re.IGNORECASE)
-_AUDIO_DTS_RE = re.compile(r"Non-monotonic DTS in output stream 0:([1-9]\d*)")
+# Older ffmpeg: "in output stream 0:N"; ffmpeg 8+: "[aost#0:N/copy @ ...] Non-monotonic DTS; ..."
+_AUDIO_DTS_RE = re.compile(
+    r"Non-monotonic DTS in output stream 0:([1-9]\d*)|\[aost#0:([1-9]\d*)/[^\]]*\]\s*Non-monotonic DTS")
 
 
 def _ffmpeg_issues(stderr: str) -> list[Issue]:

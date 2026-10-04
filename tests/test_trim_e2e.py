@@ -125,7 +125,8 @@ def test_output_is_clean_stream_copy(trimmed):
     # Only audio nudges (info), where an AAC packet overlaps the previous piece's tail.
     assert result.issues
     assert all((i.code, i.severity) == ("audio_timestamp_adjusted", "info") for i in result.issues)
-    assert all("stream 0:1" in i.message for i in result.issues)
+    # ffmpeg < 8 says "stream 0:1"; ffmpeg 8+ says "[aost#0:1/copy @ ...]"
+    assert all("stream 0:1" in i.message or "aost#0:1" in i.message for i in result.issues)
     info = result.info
     assert (info.codec, info.fps, info.pix_fmt) == ("hevc", "60000/1001", "yuvj420p")
     assert info.stream_types == ("video", "audio")  # extra track dropped
