@@ -116,14 +116,21 @@ def match_summary(mf: MatchFile, analysis: Analysis) -> str:
     return head
 
 
-def build_export(mf: MatchFile, plan: TrimPlan, settings: Settings) -> Export:
+_MATCH_VIDEO = object()
+
+
+def build_export(mf: MatchFile, plan: TrimPlan, settings: Settings,
+                 video_id: str | None | object = _MATCH_VIDEO) -> Export:
+    """Chapters and links for the video ``plan`` describes. ``video_id`` defaults to the
+    full recording's (``youtube.video_id``); the trimmed video passes its own."""
     remapped, issues = remap_events(mf.events, plan)
     analysis = analyze_match(mf)
     derived = derive_chapters(mf.events, remapped, settings, plan.total_out_ms, analysis)
     chapters, ch_issues = youtube_chapters(derived, plan.total_out_ms)
     issues += ch_issues
     grouping = chapters or derived
-    video_id = mf.video_id
+    if video_id is _MATCH_VIDEO:
+        video_id = mf.video_id
     rows = []
     for r in sorted(remapped, key=lambda r: r.out_ms):
         seconds = r.link_ms(settings.lead_in_for(r.event.type)) // 1000
