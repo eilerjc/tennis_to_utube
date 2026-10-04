@@ -120,14 +120,14 @@ def test_save_is_atomic_and_keeps_backup(tmp_path):
 
 
 def test_observed_called_default_to_each_other():
-    e = Event("e", 1, "out", called="out")
+    e = Event("e", 1, "point", called="out")
     assert e.effective_observed == "out" and e.effective_called == "out"
-    e = Event("e", 1, "out", observed="in")
+    e = Event("e", 1, "point", observed="in")
     assert e.effective_called == "in"
-    e = Event("e", 1, "out", observed="in", called="out")
+    e = Event("e", 1, "point", observed="in", called="out")
     assert (e.effective_observed, e.effective_called) == ("in", "out")
     # Stored data is not filled in.
-    assert Event("e", 1, "out", called="out").to_dict()["observed"] is None
+    assert Event("e", 1, "point", called="out").to_dict()["observed"] is None
 
 
 def test_null_collections_become_empty():
@@ -140,7 +140,7 @@ def test_sorted_events_stable():
     mf = MatchFile()
     mf.add_event(500, "point")
     first = mf.add_event(100, "game_start")
-    second = mf.add_event(100, "first_serve_in")
+    second = mf.add_event(100, "serve_in")
     assert [e.id for e in mf.sorted_events()][:2] == [first.id, second.id]
 
 

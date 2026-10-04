@@ -1,15 +1,16 @@
 """Trim pass: removal rules → kept segments snapped to keyframes → ffmpeg concat plan.
 
 Everything is stream copy. Two facts about stream-copy cuts drive the snapping
-(measured on HEVC with B-frames, see tests/test_trim_e2e.py):
+(measured on synthetic HEVC, see tests/test_trim_e2e.py):
 
 * A kept segment must **start** on a keyframe, so its start snaps *back* to the
   keyframe at or before the requested time (keeps up to one GOP of extra context).
-* A kept segment should also **end** right before a keyframe. The concat demuxer cuts
-  on decode timestamps, so with B-frames an arbitrary end drops some frames before the
-  cut and keeps some after it. Ending at the next keyframe's decode time keeps exactly
-  the frames displayed before that keyframe. Ends therefore snap *forward* to the
-  first keyframe after the requested time (again up to one GOP extra, never less).
+* A kept segment must **end** at a clean decode-order boundary: the concat demuxer cuts
+  on decode timestamps, so the frames decoded before the cut must be exactly the frames
+  shown before it. Without B-frames (the owner's camera) every frame is such a boundary
+  and ends are **exact**: the cut is at the first frame after the requested time. With
+  B-frames only keyframes are, so ends snap *forward* to the next keyframe (up to one
+  GOP extra, never less).
 
 Requires closed GOPs (checked by :func:`run_trim`).
 
@@ -117,30 +118,40 @@ def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = 
 
 
 class KeyframeLookup(Protocol):
-    def at_or_before(self, index: int, local_ms: int) -> Keyframe: ...
+    def at_or_before(self, index: int, local_ms: int) -> Keyframe:
+        """Keyframe a segment starting at ``local_ms`` must start from."""
 
-    def after(self, index: int, local_ms: int) -> Keyframe | None: ...
+    def end_after(self, index: int, local_ms: int) -> Keyframe | None:
+        """First clean end point (frame) shown after ``local_ms``; None = end of file."""
+
+
+def _grid(duration_ms: int, step: Fraction | int, b_delay: Fraction | int) -> list[Keyframe]:
+    out, n = [], 0
+    while n * step < duration_ms:
+        t = Fraction(n * step)
+        out.append(Keyframe(math.ceil(t), math.floor(t - b_delay)))
+        n += 1
+    return out
 
 
 class ListKeyframes:
-    """In-memory keyframe lookup (one sorted list per source)."""
+    """In-memory lookup: keyframes per source, and clean end points (default: keyframes)."""
 
-    def __init__(self, per_source: Sequence[Sequence[Keyframe]]):
+    def __init__(self, per_source: Sequence[Sequence[Keyframe]],
+                 ends: Sequence[Sequence[Keyframe]] | None = None):
         self.per_source = [sorted(kfs) for kfs in per_source]
+        self.ends = [sorted(e) for e in ends] if ends is not None else self.per_source
 
     @classmethod
-    def regular(cls, durations_ms: Sequence[int], interval: Fraction | int, b_delay: Fraction | int = 0
-                ) -> ListKeyframes:
-        """Keyframes every ``interval`` ms from 0, decode times ``b_delay`` ms earlier."""
-        out = []
-        for d in durations_ms:
-            kfs, n = [], 0
-            while n * interval < d:
-                t = Fraction(n * interval)
-                kfs.append(Keyframe(math.ceil(t), math.floor(t - b_delay)))
-                n += 1
-            out.append(kfs)
-        return cls(out)
+    def regular(cls, durations_ms: Sequence[int], interval: Fraction | int, b_delay: Fraction | int = 0,
+                frame_ms: Fraction | None = None) -> ListKeyframes:
+        """Keyframes every ``interval`` ms from 0, decode times ``b_delay`` ms earlier.
+
+        With ``frame_ms`` (footage without B-frames) every frame is a clean end point.
+        """
+        kfs = [_grid(d, interval, b_delay) for d in durations_ms]
+        ends = [_grid(d, frame_ms, 0) for d in durations_ms] if frame_ms is not None else None
+        return cls(kfs, ends)
 
     def at_or_before(self, index: int, local_ms: int) -> Keyframe:
         best = None
@@ -152,8 +163,8 @@ class ListKeyframes:
             raise TrimError(f"no keyframe at or before {local_ms} ms in source {index}")
         return best
 
-    def after(self, index: int, local_ms: int) -> Keyframe | None:
-        return next((k for k in self.per_source[index] if k.pts_ms > local_ms), None)
+    def end_after(self, index: int, local_ms: int) -> Keyframe | None:
+        return next((k for k in self.ends[index] if k.pts_ms > local_ms), None)
 
 
 # -- plan ------------------------------------------------------------------------
@@ -281,7 +292,7 @@ def _snap_end(timeline: Timeline, keyframes: KeyframeLookup | None, t: int) -> t
     if local < dur:
         if keyframes is None:
             raise TrimError("keyframe lookup needed for cuts")
-        kf = keyframes.after(j, local)
+        kf = keyframes.end_after(j, local)
         if kf is not None and kf.pts_ms < dur:
             return timeline.start_of(j) + kf.pts_ms, j, kf.dts_ms, kf.pts_ms
     return timeline.end_of(j), j, dur, dur

@@ -142,16 +142,15 @@ may say "won"/"lost"/"?" but all store the same type.
 - Point `point`, won by A / B / **unknown** (can't see ball, can't hear call/score)
 
 **Serve** (optional finer level)
-- First serve in `first_serve_in`, fault `fault`, let `let`, ace `ace`, double fault
-  `double_fault`, second serve in `second_serve_in`. A logged serve gives the exact point
-  start time.
+- Serve in `serve_in`, fault `fault`, let `let`, ace `ace`, double fault `double_fault`.
+  First vs second serve is derived (a fault earlier in the same point), so one `serve_in`
+  covers both. A logged serve gives the exact point start time.
 
 **Shot** (optional finer level) [data only for v1 UI]
-- Winner `winner`, forced error `forced_error`, unforced error `unforced_error`, out `out`,
-  net `net` — point-ending shot can imply the point winner (unforced error by A ⇒ point to
-  B). Conflicts are flagged. *(Open: keep `out`/`net` as types, or only as qualifiers on
-  errors?)*
-- Qualifiers via tags/details: close, bad miss, long, wide, net; later shot type
+- Winner `winner`, forced error `forced_error`, unforced error `unforced_error` — point-ending
+  shot can imply the point winner (unforced error by A ⇒ point to B). Conflicts are flagged.
+  How a shot missed (out, net, long, wide) is a qualifier, not a type.
+- Qualifiers via tags/details: close, bad miss, out, net, long, wide; later shot type
   (forehand/backhand/volley/serve), direction, numeric margin.
 
 **Coaching marks** (always available)
@@ -233,12 +232,15 @@ may say "won"/"lost"/"?" but all store the same type.
 - Removed regions show shaded on the timeline before processing.
 - **Keyframe snapping:** kept-segment **starts snap back** to the keyframe at or before the
   requested time (≤ 1.001 s earlier with these files — keeps a little extra context, never
-  loses any). Kept-segment **ends snap forward** to the first keyframe after the requested
-  time (≤ 1.001 s later), and the piece is cut at that keyframe's *decode* time.
-  *Why (measured on synthetic HEVC with B-frames):* the concat demuxer's `outpoint` compares
-  decode timestamps, so an end at an arbitrary time drops some frames shown before the cut,
-  keeps some shown after it, and collides with the next piece's timestamps. Cutting just
-  before a keyframe in decode order keeps exactly the frames shown before it.
+  loses any). Kept-segment **ends are exact** on footage without B-frames (the owner's
+  camera): the piece ends at the first frame shown after the requested time. On footage
+  with B-frames, ends **snap forward** to the next keyframe (≤ 1.001 s later). Either way the
+  piece is cut at that frame's *decode* time. Decided per source from `has_b_frames`.
+  *Why (measured on synthetic HEVC):* the concat demuxer's `outpoint` compares decode
+  timestamps. With B-frames, an end at an arbitrary frame drops some frames shown before the
+  cut, keeps some shown after it, and collides with the next piece's timestamps; only a
+  keyframe is a clean boundary there. Without B-frames decode order is display order, so
+  every frame is.
 - **Closed GOPs required.** With open GOPs the frames decoded after a keyframe but shown
   before it reference the previous GOP and come out broken after every cut. The GOP structure
   is checked before cutting and open-GOP footage is refused.

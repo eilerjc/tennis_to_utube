@@ -1,9 +1,10 @@
 """Synthetic camera footage for end-to-end tests.
 
-Clips mimic the GoPro profile (HEVC Main, yuvj420p, 60000/1001 fps, keyframe every
-60 frames, B-frames, AAC audio, plus a non-A/V track like GoPro telemetry) at a small
-size. Every frame shows its global frame number as a 12-bit barcode of vertical bars,
-so a decoded frame can be identified exactly.
+Clips mimic the GoPro profile (HEVC Main, yuvj420p, 60000/1001 fps, closed GOP with a
+keyframe every 60 frames, no B-frames, AAC audio, plus a non-A/V track like GoPro
+telemetry) at a small size. B-frames can be switched on to test other cameras. Every
+frame shows its global frame number as a 12-bit barcode of vertical bars, so a decoded
+frame can be identified exactly.
 """
 
 from __future__ import annotations
@@ -30,9 +31,10 @@ def have_ffmpeg() -> bool:
 
 
 def make_clip(path: Path, frames: int, first_index: int = 0, *, open_gop: bool = False,
-              data_track: bool = True) -> Path:
+              b_frames: bool = False, data_track: bool = True) -> Path:
     """Encode ``frames`` frames numbered from ``first_index``."""
-    x265 = f"keyint=60:min-keyint=60:scenecut=0:open-gop={int(open_gop)}:log-level=error"
+    x265 = (f"keyint=60:min-keyint=60:scenecut=0:open-gop={int(open_gop)}"
+            f":bframes={4 if b_frames else 0}:log-level=error")
     barcode = (f"geq=lum='if(mod(floor((N+{first_index})/pow(2,floor(X*{BITS}/W))),2),255,0)',"
                "format=yuvj420p")
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",

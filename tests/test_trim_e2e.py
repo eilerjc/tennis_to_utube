@@ -1,7 +1,9 @@
 """End-to-end trim on synthetic footage matching the camera profile.
 
-Three GoPro-style chapter files (HEVC, yuvj420p, 59.94 fps, keyframe every 60 frames,
-B-frames, AAC, plus an extra track) are trimmed by stream copy. Every frame carries
+Three GoPro-style chapter files (HEVC, yuvj420p, 59.94 fps, closed GOP with a keyframe
+every 60 frames, AAC, plus an extra track) are trimmed by stream copy, once as the owner's
+camera records them (no B-frames: exact ends) and once with B-frames (ends snap to
+keyframes). Every frame carries
 its global frame number as a barcode, so the test checks exactly which source frames
 end up in the output and that every remapped event time shows the same frame as the
 original time did.
@@ -57,17 +59,27 @@ def source_frame(t_ms: int) -> int:
     return FIRST[i] + math.floor(Fraction(local) / FRAME_MS)
 
 
-@pytest.fixture(scope="module")
-def footage(tmp_path_factory):
-    d = tmp_path_factory.mktemp("match")
-    paths = [make_clip(d / f"GX{ch:02d}0042.MP4", n, first)
+# Kept segments after snapping (joined ms). Starts always snap back to keyframes.
+SEGMENTS = {
+    # ends at the first frame after the requested end: 11011 (frame 660),
+    # 39006 (file 2 frame 1088 at 18151.5), 50017 (file 3 frame 498 at 8308.3)
+    "camera": [(2_002, 11_011), (17_017, 20_854 + 18_152), (41_708 + 3_003, 41_708 + 8_309)],
+    # ends at the next keyframe
+    "b_frames": [(2_002, 11_011), (17_017, 20_854 + 19_019), (41_708 + 3_003, 41_708 + 9_009)],
+}
+
+
+@pytest.fixture(scope="module", params=["camera", "b_frames"])
+def footage(request, tmp_path_factory):
+    d = tmp_path_factory.mktemp(request.param)
+    paths = [make_clip(d / f"GX{ch:02d}0042.MP4", n, first, b_frames=request.param == "b_frames")
              for ch, (n, first) in enumerate(zip(FRAMES, FIRST), start=1)]
-    return d, paths
+    return request.param, d, paths
 
 
 @pytest.fixture(scope="module")
 def trimmed(footage):
-    d, paths = footage
+    profile, d, paths = footage
     ordered = order_files(reversed(paths))
     infos = [probe(p) for p in ordered]
     match_path = d / "GX010042.match.json"
@@ -80,7 +92,7 @@ def trimmed(footage):
     cuts = propose_cuts(mf.events, tl.total_ms)
     plan = plan_trim(tl, cuts, ProbeKeyframes(ordered, durations_ms=tl.durations_ms))
     result = run_trim(plan, ordered, d / "match.mp4")
-    return {"paths": ordered, "infos": infos, "mf": mf, "cuts": cuts, "result": result,
+    return {"profile": profile, "paths": ordered, "infos": infos, "mf": mf, "cuts": cuts, "result": result,
             "frames": read_frames(result.output)}
 
 
@@ -105,15 +117,15 @@ def test_cuts_and_snapped_segments(trimmed):
         ("warmup", 0, 2_500), ("changeovers", 11_000, 17_508),
         ("changeovers", 39_000, 45_000), ("after_match", 50_008, sum(DURATIONS))]
     plan = trimmed["result"].plan
-    assert [(s.start_ms, s.end_ms) for s in plan.segments] == [
-        (2_002, 11_011), (17_017, 20_854 + 19_019), (41_708 + 3_003, 41_708 + 9_009)]
+    assert [(s.start_ms, s.end_ms) for s in plan.segments] == SEGMENTS[trimmed["profile"]]
 
 
 def test_output_is_clean_stream_copy(trimmed):
     result = trimmed["result"]
-    # Only the expected audio nudge where file 1 joins file 2 (AAC priming overlap).
-    assert [(i.code, i.severity) for i in result.issues] == [("audio_timestamp_adjusted", "info")]
-    assert "stream 0:1" in result.issues[0].message
+    # Only audio nudges (info), where an AAC packet overlaps the previous piece's tail.
+    assert result.issues
+    assert all((i.code, i.severity) == ("audio_timestamp_adjusted", "info") for i in result.issues)
+    assert all("stream 0:1" in i.message for i in result.issues)
     info = result.info
     assert (info.codec, info.fps, info.pix_fmt) == ("hevc", "60000/1001", "yuvj420p")
     assert info.stream_types == ("video", "audio")  # extra track dropped
@@ -132,7 +144,7 @@ def test_output_has_exactly_the_kept_frames(trimmed):
         out_base = plan.output_start_ms + seg.out_start_ms + (
             plan.timeline.to_joined(piece.source_index, piece.inpoint_ms) - seg.start_ms)
         k = math.ceil(Fraction(piece.inpoint_ms) / FRAME_MS)
-        while k * FRAME_MS < piece.end_ms:
+        while math.ceil(k * FRAME_MS) < piece.end_ms:  # end_ms = first cut frame, rounded up
             expected.append(FIRST[piece.source_index] + k)
             expected_pts.append(out_base + k * FRAME_MS - piece.inpoint_ms)
             k += 1
@@ -189,7 +201,7 @@ def test_export_from_trimmed_video(trimmed):
 
 
 def test_open_gop_footage_is_refused(tmp_path):
-    clip = make_clip(tmp_path / "GX010001.MP4", 300, open_gop=True, data_track=False)
+    clip = make_clip(tmp_path / "GX010001.MP4", 300, open_gop=True, b_frames=True, data_track=False)
     tl = Timeline((round(300 * FRAME_MS),))
     run_trim(plan_trim(tl, [], None), [clip], tmp_path / "join_ok.mp4")  # plain copy is fine
     plan = plan_trim(tl, [Cut("x", "test", 1500, 3500, "x")],

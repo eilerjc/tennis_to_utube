@@ -22,8 +22,16 @@ def cut(start, end, rule="test"):
     return Cut(f"{rule}:{start}", rule, start, end, rule)
 
 
+FRAME = Fraction(1001, 60)
+
+
 def kfs(*durations):
     return ListKeyframes.regular(durations, GOP, B_DELAY)
+
+
+def exact(*durations):
+    """No B-frames (the owner's camera): every frame is a clean end point."""
+    return ListKeyframes.regular(durations, GOP, 0, frame_ms=FRAME)
 
 
 # -- removal rules ---------------------------------------------------------------
@@ -163,6 +171,17 @@ def test_snapping_never_loses_requested_footage():
         (seg,) = plan.segments
         assert seg.start_ms <= start and seg.end_ms > end
         assert start - seg.start_ms < 1001 and seg.end_ms - end <= 1001
+
+
+def test_exact_ends_without_b_frames():
+    tl = Timeline((60_000,))
+    plan = plan_trim(tl, [cut(10_100, 20_000)], exact(60_000))
+    # ends at the first frame shown after 10100: frame 606 at 10110.1 ms; start still
+    # snaps back to the keyframe at 19019
+    assert plan.pieces == (Piece(0, 0, 10_110, 10_111), Piece(0, 19_019, 60_000, 60_000))
+    for end in (5_004, 5_005, 7_777, 33_333):
+        (seg, _) = plan_trim(tl, [cut(end, 50_000)], exact(60_000)).segments
+        assert end < seg.end_ms <= end + 17
 
 
 def test_short_removal_disappears_after_snapping():

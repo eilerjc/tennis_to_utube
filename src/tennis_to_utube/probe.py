@@ -145,10 +145,11 @@ def probe(path: str | Path, tools: Tools = Tools()) -> MediaInfo:
 
 @dataclass(frozen=True, order=True)
 class Keyframe:
-    """A video keyframe, in local ms of its file.
+    """A video frame usable as a cut point (a keyframe, or any frame as an end point
+    in footage without B-frames), in local ms of its file.
 
     ``pts_ms`` is rounded up and ``dts_ms`` rounded down to whole ms, so that a cut
-    *starting* at ``pts_ms`` still begins on this keyframe and a cut *ending* at
+    *starting* at ``pts_ms`` still begins on this frame and a cut *ending* at
     ``dts_ms`` (the concat demuxer compares decode timestamps) stops just before it.
     """
 
@@ -194,14 +195,41 @@ def list_keyframes(path: str | Path, tools: Tools = Tools(),
 
 
 class ProbeKeyframes:
-    """Keyframe lookup backed by ffprobe, reading small windows around each query."""
+    """Keyframe lookup backed by ffprobe, reading small windows around each query.
+
+    End points are exact (any frame) for sources without B-frames, keyframes otherwise.
+    ``exact_ends`` overrides the per-source check (``has_b_frames == 0``).
+    """
 
     def __init__(self, paths: Sequence[str | Path], tools: Tools = Tools(),
-                 durations_ms: Sequence[int] | None = None, window_ms: int = 3000):
+                 durations_ms: Sequence[int] | None = None, window_ms: int = 3000,
+                 exact_ends: Sequence[bool] | None = None):
         self.paths = [Path(p) for p in paths]
         self.tools = tools
         self.durations_ms = list(durations_ms) if durations_ms is not None else None
         self.window_ms = window_ms
+        self._exact: dict[int, bool] = dict(enumerate(exact_ends)) if exact_ends is not None else {}
+
+    def exact_ends(self, index: int) -> bool:
+        if index not in self._exact:
+            self._exact[index] = probe(self.paths[index], self.tools).has_b_frames == 0
+        return self._exact[index]
+
+    def end_after(self, index: int, local_ms: int) -> Keyframe | None:
+        if not self.exact_ends(index):
+            return self.after(index, local_ms)
+        # No reordering: decode order is display order, so every frame is a clean end.
+        window = 200
+        limit = self.durations_ms[index] if self.durations_ms else None
+        while True:
+            interval = f"{local_ms / 1000:.3f}%{(local_ms + window) / 1000:.3f}"
+            frames = [_to_keyframe(p) for p in _packets(self.paths[index], self.tools, interval)]
+            later = [f for f in frames if f.pts_ms > local_ms]
+            if later:
+                return min(later)
+            if limit is None or local_ms + window >= limit:
+                return None
+            window *= 4
 
     def at_or_before(self, index: int, local_ms: int) -> Keyframe:
         window = self.window_ms

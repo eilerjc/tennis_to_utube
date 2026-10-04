@@ -24,20 +24,18 @@ ENDING_STATE = "ending_state"  # final score from another source (scorebook), en
 # Points
 POINT = "point"  # result: "A" | "B" | "unknown"
 
-# Serve
-FIRST_SERVE_IN = "first_serve_in"
+# Serve. First vs second serve is derived (a fault earlier in the same point).
+SERVE_IN = "serve_in"
 FAULT = "fault"
 LET = "let"
 ACE = "ace"
 DOUBLE_FAULT = "double_fault"
-SECOND_SERVE_IN = "second_serve_in"
 
-# Shot [data only for v1 UI]
+# Shot [data only for v1 UI]. How a shot missed (out, net, long, wide, ...) is a
+# qualifier in tags/details, not a type.
 WINNER = "winner"
 FORCED_ERROR = "forced_error"
 UNFORCED_ERROR = "unforced_error"
-OUT = "out"
-NET = "net"
 
 # Coaching marks
 GOOD_RECOVERY = "good_recovery"
@@ -59,17 +57,14 @@ LABELS: dict[str, str] = {
     SCORE_STATE: "Set score",
     ENDING_STATE: "Ending state",
     POINT: "Point",
-    FIRST_SERVE_IN: "First serve in",
+    SERVE_IN: "Serve in",
     FAULT: "Fault",
     LET: "Let",
     ACE: "Ace",
     DOUBLE_FAULT: "Double fault",
-    SECOND_SERVE_IN: "Second serve in",
     WINNER: "Winner",
     FORCED_ERROR: "Forced error",
     UNFORCED_ERROR: "Unforced error",
-    OUT: "Out",
-    NET: "Net",
     GOOD_RECOVERY: "Good recovery",
     FOOTWORK: "Footwork/positioning",
     BODY_LANGUAGE: "Body language",
