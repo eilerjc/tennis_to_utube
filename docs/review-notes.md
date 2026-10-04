@@ -1,6 +1,26 @@
 # Review notes (work done while the owner was away)
 
-Assumptions and open points to go through together. Newest at the bottom of each section.
+## Try first on Windows (15 minutes)
+1. Put `libmpv-2.dll` next to `run.bat` (see README), double-click `run.bat`.
+2. Files: open `W:\video\2026-09-28`, check the order/durations, create a match.
+3. Mark: play, try `Space`, arrows, `Ctrl+arrows`, the wheel over the video while paused,
+   a few `G`/`A`/`S`/`Z` presses; check the score panel and the timeline.
+4. Jump with `↑`/`↓` to a mark: is it on the exact frame you marked?
+5. Trim: untick a cut, Make video, play the result.
+6. Export: paste any video id, look at the chapters and the links file.
+
+## Open questions
+- Wheel over the video on Windows (mpv's own window may swallow it) — works?
+- Is a one-frame-late seek ever visible (mpv's 5 ms seek rule, see step 2)?
+- Changeover cuts are anchored on **Game end** marks. If you only mark points (no Game
+  end), no changeovers are proposed. Follow-up: anchor on the point that ends an odd game
+  using the score engine. Worth doing?
+- Ending state match tiebreak is typed as `[10-8]` but stored as a 1–0 set (the 10–8 is not
+  kept). OK, or keep the tiebreak points?
+- Doubles: a side's first service game has no predicted player; set it by editing the Game
+  start (double-click in the Events list). Want a quick picker on `G` instead?
+
+## Details by step
 
 ## GUI step 1 — Files page
 - Folder listing shows `.mp4`/`.mov` files; GoPro files ordered by recording then chapter.
