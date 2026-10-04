@@ -1,12 +1,15 @@
 import csv
 import io
 
+import pytest
+
 from tennis_to_utube.config import Settings
 from tennis_to_utube.matchfile import MatchFile
 from tennis_to_utube.timeline import Timeline
 from tennis_to_utube.trim import plan_trim
 from tennis_to_utube.youtube import (
-    build_export, describe, description, link_url, links_csv, links_markdown, timestamp,
+    build_export, describe, description, link_url, links_csv, links_markdown, parse_video_id,
+    timestamp,
 )
 
 SETTINGS = Settings(lead_in={"default": 5000, "ace": 3000}, chapter_gap_ms=600_000)
@@ -78,3 +81,13 @@ def test_build_export_with_video_id():
 
 def test_description_lines():
     assert description([]) == ""
+
+
+@pytest.mark.parametrize("text, vid", [
+    ("dQw4w9WgXcQ", "dQw4w9WgXcQ"), ("https://youtu.be/dQw4w9WgXcQ?si=abc", "dQw4w9WgXcQ"),
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s", "dQw4w9WgXcQ"),
+    ("youtube.com/shorts/dQw4w9WgXcQ", "dQw4w9WgXcQ"), ("https://youtube.com/live/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ("https://example.com/watch?v=dQw4w9WgXcQ", None), ("nope", None), ("", None),
+])
+def test_parse_video_id(text, vid):
+    assert parse_video_id(text) == vid

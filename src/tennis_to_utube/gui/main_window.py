@@ -4,25 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QLabel, QMainWindow, QTabWidget, QWidget
+from PySide6.QtWidgets import QMainWindow, QTabWidget, QWidget
 
 from ..appstate import AppState
 from ..config import Config
 from ..matchfile import MatchFile
 from ..shortcuts import Shortcuts, default_shortcuts
+from .export_page import ExportPage
 from .files_page import FilesPage
 from .mark_page import MarkPage
 from .player import create_player
 from .trim_page import TrimPage
 
 APP_TITLE = "Tennis to YouTube"
-
-
-class Placeholder(QLabel):
-    def __init__(self, text: str):
-        super().__init__(text)
-        self.setWordWrap(True)
-        self.setMargin(24)
 
 
 class MainWindow(QMainWindow):
@@ -39,7 +33,7 @@ class MainWindow(QMainWindow):
         self.files = FilesPage(config, state)
         self.mark = MarkPage(config, shortcuts, player_factory)
         self.trim = TrimPage(config)
-        self.export: QWidget = Placeholder("Exporting comes after trimming.")
+        self.export = ExportPage(config)
         self.steps = QTabWidget()
         self.steps.setDocumentMode(True)
         for label, page in (("1  Files", self.files), ("2  Mark", self.mark),
@@ -53,6 +47,8 @@ class MainWindow(QMainWindow):
         self.trim.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
         self.trim.changed.connect(self.mark.external_change)
         self.trim.showTime.connect(self._show_time)
+        self.export.message.connect(lambda text: self.statusBar().showMessage(text, 5000))
+        self.export.changed.connect(self.mark.external_change)
         self.steps.currentChanged.connect(self._step_changed)
         warnings = config.warnings + shortcuts.warnings
         if warnings:
@@ -74,12 +70,15 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Opened {self.match_path}", 5000)
         self.mark.load_match(mf, self.match_path)
         self.trim.load(self.mark.session)
+        self.export.load(self.mark.session)
         self.steps.setCurrentIndex(1)
 
     def _step_changed(self, index: int) -> None:
         page = self.steps.widget(index)
         if page is self.trim and self.mark.session is not None:
             self.trim.refresh()
+        if page is self.export and self.mark.session is not None:
+            self.export.refresh()
         self.mark.save()
 
     def _show_time(self, t_ms: int) -> None:

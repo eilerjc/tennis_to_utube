@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass
+from urllib.parse import parse_qs, urlparse
 from typing import Any, Sequence
 
 from . import catalog, names, structure
@@ -25,6 +27,27 @@ def timestamp(seconds: int) -> str:
     h, rest = divmod(int(seconds), 3600)
     m, s = divmod(rest, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def parse_video_id(text: str) -> str | None:
+    """Video id from a pasted link or id: youtu.be/ID, watch?v=ID, /shorts/ID, /live/ID."""
+    text = text.strip()
+    if _ID_RE.match(text):
+        return text
+    url = urlparse(text if "://" in text else "https://" + text)
+    host = (url.hostname or "").lower()
+    candidate = None
+    if host.endswith("youtu.be"):
+        candidate = url.path.strip("/").split("/")[0]
+    elif host.endswith("youtube.com") or host.endswith("youtube-nocookie.com"):
+        candidate = parse_qs(url.query).get("v", [None])[0]
+        parts = url.path.strip("/").split("/")
+        if candidate is None and len(parts) >= 2 and parts[0] in ("shorts", "live", "embed", "v"):
+            candidate = parts[1]
+    return candidate if candidate and _ID_RE.match(candidate) else None
 
 
 def link_url(video_id: str, seconds: int) -> str:

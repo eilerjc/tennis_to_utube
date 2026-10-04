@@ -97,6 +97,22 @@ class Session:
         except (KeyError, TypeError, ValueError):
             return None
 
+    def export_plan(self) -> tuple[TrimPlan, str]:
+        """The timeline links refer to, and a note for the user."""
+        plan = self.output_plan()
+        if plan is not None:
+            name = Path((self.mf.output or {}).get("path") or "the video").name
+            return plan, f"Times refer to {name} (made on the Trim step)."
+        note = "No video made on the Trim step yet: times refer to the original recording"
+        if len(self.mf.sources) > 1:
+            note += " joined in order (make a video on the Trim step to upload one file)"
+        return plan_trim(self.timeline(), [], None), note + "."
+
+    def set_video_id(self, video_id: str | None) -> None:
+        self._before_edit()
+        self.mf.youtube["video_id"] = video_id
+        self._after_edit()
+
     def output_path(self) -> Path | None:
         path = (self.mf.output or {}).get("path")
         return matchfile.resolve_source_path(path, self.path) if path else None

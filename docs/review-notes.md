@@ -86,3 +86,12 @@ Assumptions and open points to go through together. Newest at the bottom of each
   you can keep marking/editing events afterwards and the links still match the video. If the
   cuts change after making the video, the Trim page says so.
 - Making a video with no cuts ticked just joins the files (useful for multi-file matches).
+
+## GUI step 7 — Export
+- Paste the YouTube link or id (youtu.be/…, watch?v=…, /shorts/…, /live/… or the bare
+  11-character id); it is stored in the match file and links regenerate.
+- Chapters box (Copy button) for the YouTube description; links preview grouped by chapter.
+- "Save links" writes `<first file> links.md` and `<first file> links.csv` next to the match
+  file. The CSV is UTF-8 with BOM so Excel on Windows shows accented names correctly.
+- Without a made video, times refer to the original recording (and a note says so; for
+  multi-file matches the files are joined in order — upload a made video instead).
