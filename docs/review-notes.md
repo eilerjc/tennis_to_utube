@@ -20,6 +20,18 @@
 - Tiebreak points are kept in set scores (`7-6(5)`, `[10-8]`).
 - Doubles: `G` pops a 1/2 server picker when the server can't be predicted.
 - Tiebreak changeovers added; regular (every 6) or Coman (1, then every 4) per match.
+- Stats: separate command (`stats.bat`, drop a match file on it), CSV, shot buttons only.
+
+## Assumptions to check (stats)
+- Shot buttons (winner / forced / unforced error per side) **end the point** like an ace when
+  pressed on their own, so you don't need Point as well.
+- Pressed within 3 s after a Point (setting `scoring.shot_modifier_window_ms`), a shot is
+  added to that Point instead. It is not added if a serve/fault mark came in between, or if
+  it contradicts the Point's winner (then it counts as a new point and the Issues list
+  flags it). A shot 3–5 s after a Point is also flagged. Pressing another shot in the
+  window replaces it.
+- Serve stats count only points with serve marks; "2nd serve" = a fault came first.
+- Break points are not counted in tiebreaks.
 
 ## Details by step
 

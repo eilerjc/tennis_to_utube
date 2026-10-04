@@ -41,6 +41,15 @@ Settings (`config.toml`) and keys (`shortcuts.toml`) can be overridden in
 4. **Export** — after uploading, paste the YouTube link. Copy the chapters into the video
    description; **Save links** writes a Markdown and a CSV list of links to every mark.
 
+## Statistics
+
+Drop a `.match.json` file on `stats.bat` (or run
+`python -m tennis_to_utube.stats file.match.json`): it writes `<match> stats.csv` next to it
+— points won on serve and return, serve percentages, aces, double faults, break points,
+winners and errors, for the match and each set. Mark serves (`Q W E R`) and click the shot
+buttons (winner / forced / unforced error) to get the finer stats. A shot clicked within 3 s
+of a Point describes that point instead of ending a new one.
+
 ## Development
 
 ```

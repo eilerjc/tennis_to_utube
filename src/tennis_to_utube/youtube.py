@@ -66,6 +66,9 @@ def describe(e: Event, match: dict[str, Any]) -> str:
         text += f" {structure.score_text(e)}"
     if e.result in ("A", "B"):
         text += f" — won by {names.side_name(match, e.result)}"
+        shot = e.details.get("shot") if e.type == catalog.POINT else None
+        if shot and e.details.get("shot_side") in ("A", "B"):
+            text += f" ({catalog.label(shot).lower()} by {names.side_name(match, e.details['shot_side'])})"
     elif e.result == "unknown":
         text += " — winner unknown"
     who = e.player or (names.side_name(match, e.side) if e.side in ("A", "B") else None)

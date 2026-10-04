@@ -43,6 +43,9 @@ DEFAULTS: dict[str, Any] = {
         "default_format": "standard_mtb",
         # A Point pressed this soon after an ace/double fault is flagged as a possible duplicate.
         "duplicate_point_window_ms": 5000,
+        # A shot button (winner/error) pressed this soon after a Point describes that point
+        # instead of ending a new one.
+        "shot_modifier_window_ms": 3000,
     },
     # Short player names on buttons: first N letters of the first name + last initial.
     "names": {"short_first_letters": 4},

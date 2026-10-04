@@ -22,6 +22,8 @@ from .actions import call, key_text
 BUTTON_ROWS: list[tuple[str, list[str]]] = [
     ("Points", ["point_a", "point_b", "point_unknown"]),
     ("Serve", ["serve_in", "fault", "let", "ace"]),
+    ("Shots (end the point)", ["winner_a", "forced_error_a", "unforced_error_a",
+                               "winner_b", "forced_error_b", "unforced_error_b"]),
     ("Games", ["game_start", "game_start_other_server", "game_end_a", "game_end_b",
                "game_end_unknown"]),
     ("Sets", ["set_start", "score_state", "set_end_a", "set_end_b", "set_end_unknown"]),

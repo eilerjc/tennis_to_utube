@@ -16,7 +16,7 @@ from .. import catalog, matchfile, names, playback, timeline_view
 from ..config import Config
 from ..matchfile import MatchFile
 from ..session import LockedError, Session
-from ..shortcuts import ACTIONS, Shortcuts
+from ..shortcuts import ACTIONS, ACTIONS_BY_ID, Shortcuts
 from .actions import build_actions, call, key_text
 from .event_panel import EndingStateDialog, EventButtons, RulesDialog, ScorePanel, ScoreStateDialog
 from .lists import EventDialog, ListsPanel, MatchDialog
@@ -320,7 +320,12 @@ class MarkPage(QWidget):
         t = self.mark_time() if t is None else t
         e = self.session.mark(action_id, t, **extra)
         self.selected_id = e.id
-        self._after_edit(f"{catalog.label(e.type)} at {playback.clock_text(t)}")
+        action_type = ACTIONS_BY_ID[action_id].event_type
+        if action_type != e.type:  # a shot added to the Point just marked
+            self._after_edit(f"{catalog.label(action_type)} added to the Point at "
+                             f"{playback.clock_text(e.t_ms)}")
+        else:
+            self._after_edit(f"{catalog.label(e.type)} at {playback.clock_text(t)}")
 
     def mark_game_start(self, other_server: bool) -> None:
         """Game start with the predicted server; in doubles, when the server cannot be

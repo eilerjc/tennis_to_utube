@@ -317,8 +317,27 @@ def _apply_checkpoint(s: State, cp: Checkpoint, tracking: bool) -> State:
 # -- the engine ------------------------------------------------------------------------
 
 # How an event affects the score (decided by a plain pass over the log, see _classify).
-POINT_END = "point_end"  # Point, Ace, or the second Fault of a point
+POINT_END = "point_end"  # Point, Ace, a shot (winner/error), or the second Fault of a point
+# Point-ending shots; ``side`` (or ``player``) is the hitter.
+SHOT_TYPES = (catalog.WINNER, catalog.FORCED_ERROR, catalog.UNFORCED_ERROR)
 OUTCOME_TYPES = (catalog.POINT, catalog.GAME_END, catalog.SET_END)
+
+
+def shot_of(e: Event, match: dict) -> tuple[str, str | None] | None:
+    """(shot type, hitter side) of a shot event, or of a Point carrying a shot as a modifier
+    (``details.shot`` / ``details.shot_side``); None if there is no shot."""
+    if e.type in SHOT_TYPES:
+        return e.type, names.side_of(match, e.player) or names.side_of(match, e.side)
+    shot = e.details.get("shot") if e.type == catalog.POINT else None
+    if shot in SHOT_TYPES:
+        side = e.details.get("shot_side")
+        return shot, side if side in SIDES else None
+    return None
+
+
+def shot_point_winner(shot: str, hitter: str) -> str:
+    """A winner wins the point for the hitter; an error loses it."""
+    return hitter if shot == catalog.WINNER else other(hitter)
 
 
 @dataclass(frozen=True)
@@ -333,7 +352,7 @@ def _classify(events: Sequence[Event], match: dict[str, Any] | None) -> list[_In
     out, faults, tracking = [], 0, False
     for e in events:
         kind = None
-        if e.type in (catalog.POINT, catalog.ACE):
+        if e.type in (catalog.POINT, catalog.ACE) or e.type in SHOT_TYPES:
             kind = POINT_END
         elif e.type == catalog.FAULT:
             faults += 1
@@ -363,6 +382,9 @@ def _moves(s: State, e: Event, info: _Info, forced: bool) -> list[tuple[State, s
     if info.kind == POINT_END:
         if t == catalog.POINT:
             known = _entered(e)
+        elif t in SHOT_TYPES:  # a winner wins the point for the hitter; an error loses it
+            hitter = info.side
+            known = shot_point_winner(t, hitter) if hitter else None
         else:
             srv = s.point_server()
             known = (srv if t == catalog.ACE else other(srv)) if srv else None
@@ -627,21 +649,28 @@ def _pre_issues(e: Event, info: _Info, states: set[State], match: dict[str, Any]
 
 
 def _duplicate_points(evs: Sequence[Event], infos: Sequence[_Info], window_ms: int) -> list[Issue]:
-    """A Point shortly after a point ended by a serve (ace or double fault), no serve between."""
-    out, serve_end = [], None
+    """A Point shortly after a point ended by an ace, double fault or shot, or a shot shortly
+    after a Point (one the shot could not describe), with no serve between."""
+    out, serve_end, point_end = [], None, None
     for e, info in zip(evs, infos):
         if e.type in (catalog.SERVE_IN, catalog.LET) or (e.type == catalog.FAULT
                                                           and info.kind is None):
-            serve_end = None
+            serve_end = point_end = None
+        elif e.type in SHOT_TYPES and point_end is not None and e.t_ms - point_end <= window_ms:
+            out.append(Issue("possible_duplicate_point",
+                             f"{catalog.label(e.type)} marked right after a Point but ends a new "
+                             "point (it disagrees with the Point's winner?); delete one if it is "
+                             "the same point", e.t_ms, e.id))
+            serve_end, point_end = e.t_ms, None
         elif info.kind == POINT_END and e.type != catalog.POINT:
             serve_end = e.t_ms
         elif e.type == catalog.POINT:
             if serve_end is not None and e.t_ms - serve_end <= window_ms:
                 out.append(Issue("possible_duplicate_point",
-                                 "Point marked right after a point ended by the serve "
-                                 "(ace or double fault); delete it if it is the same point",
+                                 "Point marked right after a point ended by an ace, double fault "
+                                 "or shot; delete it if it is the same point",
                                  e.t_ms, e.id))
-            serve_end = None
+            serve_end, point_end = None, e.t_ms
     return out
 
 
@@ -759,3 +788,15 @@ def score_text(view: ScoreView) -> str:
         parts.append(f"{view.games[0]}–{view.games[1]}" if view.games is not None else "?")
         parts.append(points_text(view) or "?")
     return ", ".join(parts)
+
+
+def point_server_side(view: ScoreView) -> str | None:
+    """Side serving the next point, if the score says so (tiebreaks rotate every 2 points)."""
+    if view.server is None:
+        return None
+    if view.in_tiebreak:
+        if view.points is None:
+            return None
+        k = sum(view.points)
+        return view.server if ((k + 1) // 2) % 2 == 0 else other(view.server)
+    return view.server

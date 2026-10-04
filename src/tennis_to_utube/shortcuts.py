@@ -77,14 +77,15 @@ class Action:
     event_type: str | None = None  # event actions: the type they log ...
     result: str | None = None  # ... and its result
     variant: str | None = None  # e.g. "other_server" for Game start with the other server
+    side: str | None = None  # the side the event is about (shots: the hitter)
 
     def button_text(self, names: Mapping[str, str]) -> str:
         return self.label.replace("{A}", names.get("A", "A")).replace("{B}", names.get("B", "B"))
 
 
 def _ev(id: str, label: str, group: str, keys: tuple[str, ...], event_type: str,
-        result: str | None = None, variant: str | None = None) -> Action:
-    return Action(id, label, group, keys, event_type, result, variant)
+        result: str | None = None, variant: str | None = None, side: str | None = None) -> Action:
+    return Action(id, label, group, keys, event_type, result, variant, side)
 
 
 ACTIONS: tuple[Action, ...] = (
@@ -110,6 +111,13 @@ ACTIONS: tuple[Action, ...] = (
     _ev("set_end_a", "Set {A}", "set", ("Shift+Z",), catalog.SET_END, "A"),
     _ev("set_end_b", "Set {B}", "set", ("Shift+X",), catalog.SET_END, "B"),
     _ev("set_end_unknown", "Set ?", "set", ("Shift+C",), catalog.SET_END, "unknown"),
+    # Shots: buttons only (no keys, agreed); end the point like an ace
+    _ev("winner_a", "Winner {A}", "shot", (), catalog.WINNER, side="A"),
+    _ev("forced_error_a", "Forced err. {A}", "shot", (), catalog.FORCED_ERROR, side="A"),
+    _ev("unforced_error_a", "Unforced err. {A}", "shot", (), catalog.UNFORCED_ERROR, side="A"),
+    _ev("winner_b", "Winner {B}", "shot", (), catalog.WINNER, side="B"),
+    _ev("forced_error_b", "Forced err. {B}", "shot", (), catalog.FORCED_ERROR, side="B"),
+    _ev("unforced_error_b", "Unforced err. {B}", "shot", (), catalog.UNFORCED_ERROR, side="B"),
     # Coaching marks: number row
     _ev("good_recovery", "Good recovery", "coaching", ("1",), catalog.GOOD_RECOVERY),
     _ev("footwork", "Footwork", "coaching", ("2",), catalog.FOOTWORK),

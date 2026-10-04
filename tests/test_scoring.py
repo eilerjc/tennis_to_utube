@@ -526,3 +526,18 @@ def test_stored_sets_keep_tiebreaks():
     bad = Log()
     bad("score_state", details={"sets": [[7, 6, 7]]})
     assert [i.code for i in analyze(bad.events, STD).issues] == ["invalid_score_state"]
+
+
+def test_shots_end_the_point():
+    log = Log()
+    log("winner", side="A")          # A wins the point
+    log("unforced_error", side="A")  # B wins it
+    log("forced_error", side="B")    # A wins it
+    w = log("winner")                # hitter unknown: winner of the point unknown
+    an, view = final(log.events)
+    assert view.points is None  # 3-1 or 2-2
+    assert [an.step_for(e.id).winner for e in log.events[:3]] == ["A", "B", "A"]
+    assert an.step_for(w.id).uncertain
+    log.t += 1_000
+    log("point", result="A")  # right after a shot-ended point: possible duplicate
+    assert "possible_duplicate_point" in [i.code for i in analyze(log.events, STD).issues]

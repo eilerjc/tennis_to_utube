@@ -166,9 +166,15 @@ may say "won"/"lost"/"?" but all store the same type.
   start time. The second fault and an ace **end the point by themselves** (see §7); no Point
   press is needed after them.
 
-**Shot** (optional finer level) [data only for v1 UI]
-- Winner `winner`, forced error `forced_error`, unforced error `unforced_error` — point-ending
-  shot can imply the point winner (unforced error by A ⇒ point to B). Conflicts are flagged.
+**Shot** (optional finer level; buttons only, no keys)
+- Winner `winner`, forced error `forced_error`, unforced error `unforced_error`, one button
+  each per side (the hitter). A shot **ends the point** like an ace: winner ⇒ point to the
+  hitter, error ⇒ point to the other side.
+- **Modifier:** a shot pressed within `scoring.shot_modifier_window_ms` (default 3 s) after a
+  Point — with no serve/fault/ace/shot mark in between, and agreeing with the Point's winner
+  if one was entered — describes that Point instead (`details.shot`, `details.shot_side`;
+  sets an unknown winner; pressing again replaces it; one undo step). Otherwise it is a new
+  point-ending event.
   How a shot missed (out, net, long, wide) is a qualifier, not a type.
 - Qualifiers via tags/details: close, bad miss, out, net, long, wide; later shot type
   (forehand/backhand/volley/serve), direction, numeric margin.
@@ -405,6 +411,17 @@ Runs from source for now: `run.bat` sets up `.venv` on first use (one-click .exe
   chapter; cross-checked with `creation_time`); user reorders by drag or up/down buttons.
 - If a folder holds several recordings, propose grouping by recording number — user approves.
 - Match file stores the final order; paths relative to the match file where possible.
+
+## 12a. Statistics (separate tool, no GUI)
+
+`python -m tennis_to_utube.stats <match file> [-o out.csv]` (Windows: drop the match file
+on `stats.bat`) writes `<match> stats.csv` (UTF-8 with BOM for Excel) from the event log
+only, using the score engine for servers, break points and inferred winners. Columns:
+Section, Stat, side A, side B; sections Match and Set N; doubles adds a By server table.
+Stats: points won, service/return points won, 1st serve in, 1st/2nd serve points won, aces,
+double faults, break points won/saved, service/return games won, winners, forced/unforced
+errors, points with unknown winner (left out). Serve stats only count points with serve
+marks; shot stats only count marked shots.
 
 ## 13. Future (keep the format ready)
 

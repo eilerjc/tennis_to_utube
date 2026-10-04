@@ -154,3 +154,33 @@ def test_export_plan_and_video_id(tmp_path):
     assert s.mf.video_id == "dQw4w9WgXcQ"
     s.undo()
     assert s.mf.video_id is None
+
+
+def test_shot_shortly_after_a_point_describes_it(tmp_path):
+    s = session(tmp_path)
+    s.mark("game_start", 1000)
+    p = s.mark("point_a", 2000)
+    e = s.mark("winner_a", 3500)  # within the window: modifies the Point
+    assert e.id == p.id and len(s.mf.events) == 2
+    assert e.details == {"shot": "winner", "shot_side": "A"} and e.result == "A"
+    assert s.flow_at(4000).score.points == (1, 0)  # still one point
+    s.mark("forced_error_b", 4000)  # pressed again: replaces the shot
+    assert s.event(p.id).details["shot"] == "forced_error"
+    assert s.undo() and s.event(p.id).details["shot"] == "winner"  # one undo step
+    # disagrees with the Point's winner: a new point
+    assert s.mark("winner_b", 4500).type == "winner"
+    assert s.flow_at(5000).score.points == (1, 1)
+    assert [i.code for i in s.analysis.issues] == ["possible_duplicate_point"]
+    # too late, or after a serve mark: a new point
+    s.mark("point_a", 10_000)
+    assert s.mark("winner_a", 14_000).type == "winner"
+    s.mark("point_b", 20_000)
+    s.mark("serve_in", 21_000)
+    assert s.mark("unforced_error_a", 22_000).type == "unforced_error"
+
+
+def test_shot_sets_an_unknown_point_winner(tmp_path):
+    s = session(tmp_path)
+    p = s.mark("point_unknown", 1000)
+    s.mark("unforced_error_b", 2000)
+    assert s.event(p.id).result == "A"

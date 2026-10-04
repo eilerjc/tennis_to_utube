@@ -74,7 +74,8 @@ class EventsModel(QAbstractTableModel):
             if col == 0:
                 return playback.clock_text(e.t_ms)
             if col == 1:
-                return catalog.label(e.type)
+                shot = e.details.get("shot") if e.type == catalog.POINT else None
+                return f"{catalog.label(e.type)} · {catalog.label(shot)}" if shot else catalog.label(e.type)
             if col == 2:
                 return _who(e, self.match)
             if col == 3:

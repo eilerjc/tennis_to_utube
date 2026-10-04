@@ -16,28 +16,21 @@ from . import catalog, matchfile, names
 from .config import Config
 from .flow import Flow, analyze_match, flow_at
 from .matchfile import Event, MatchFile
-from .scoring import Analysis, ScoreView, other
+from .scoring import (SHOT_TYPES, Analysis, other, point_server_side,  # noqa: F401 (re-exported)
+                      shot_point_winner)
 from .shortcuts import ACTIONS_BY_ID
 from .timeline import Timeline
 from .trim import RULES, Cut, KeyframeLookup, TrimPlan, plan_from_dict, plan_trim, propose_cuts
 
 MAX_UNDO = 500
+SHOT_MODIFIER_WINDOW_MS = 3000
+# Marks that belong to a point: the latest one before a shot press decides whether the shot
+# describes the last Point (a serve mark means a new point has started).
+_POINT_MARKS = (catalog.POINT, catalog.ACE, catalog.FAULT, catalog.SERVE_IN, catalog.LET, *SHOT_TYPES)
 
 
 class LockedError(RuntimeError):
     pass
-
-
-def point_server_side(view: ScoreView) -> str | None:
-    """Side serving the next point, if the score says so (tiebreaks rotate every 2 points)."""
-    if view.server is None:
-        return None
-    if view.in_tiebreak:
-        if view.points is None:
-            return None
-        k = sum(view.points)
-        return view.server if ((k + 1) // 2) % 2 == 0 else other(view.server)
-    return view.server
 
 
 class Session:
@@ -285,9 +278,17 @@ class Session:
         action = ACTIONS_BY_ID[action_id]
         if action.event_type is None:
             raise ValueError(f"{action_id} does not log an event")
+        if action.event_type in SHOT_TYPES and action.side is not None and not self.locked:
+            point = self.shot_modifier_target(t_ms, action.event_type, action.side)
+            if point is not None:
+                return self.add_shot_to_point(point.id, action.event_type, action.side)
         fields: dict[str, Any] = {}
         if action.result is not None:
             fields["result"] = action.result
+        if action.side is not None:
+            fields["side"] = action.side
+            if self.mf.match.get("kind") != "doubles":
+                fields["player"] = names.players(self.mf.match, action.side)[0]
         flow = self.flow_at(t_ms)
         match = self.mf.match
         if action.event_type == catalog.GAME_START:
@@ -301,6 +302,31 @@ class Session:
                     fields["player"] = names.players(match, side)[0]
         fields.update(extra)
         return self.add(t_ms, action.event_type, **fields)
+
+    def shot_modifier_target(self, t_ms: int, shot: str, hitter: str) -> Event | None:
+        """The Point a shot pressed at ``t_ms`` describes: the last point mark before it is a
+        Point at most the modifier window earlier, and its winner (if entered) agrees with
+        the shot. None means the shot ends a new point."""
+        window = (self.config.get("scoring.shot_modifier_window_ms") if self.config
+                  else SHOT_MODIFIER_WINDOW_MS)
+        marks = [e for e in self.mf.events if e.type in _POINT_MARKS and e.t_ms <= t_ms]
+        if not marks:
+            return None
+        last = max(marks, key=lambda e: e.t_ms)
+        if last.type != catalog.POINT or t_ms - last.t_ms > window:
+            return None
+        if last.result in ("A", "B") and last.result != shot_point_winner(shot, hitter):
+            return None
+        return last
+
+    def add_shot_to_point(self, event_id: str, shot: str, hitter: str) -> Event:
+        """Record how a Point ended (replacing an earlier shot); sets an unknown winner."""
+        e = self.mf.event(event_id)
+        details = {**e.details, "shot": shot, "shot_side": hitter}
+        fields: dict[str, Any] = {"details": details}
+        if e.result not in ("A", "B"):
+            fields["result"] = shot_point_winner(shot, hitter)
+        return self.update(event_id, **fields)
 
     # -- saving ------------------------------------------------------------------------------
 
