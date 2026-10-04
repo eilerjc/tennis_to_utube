@@ -1,6 +1,7 @@
 """Offscreen smoke tests of the Files step (the owner checks the real GUI on Windows)."""
 
 import time
+from pathlib import Path
 
 import pytest
 
@@ -100,7 +101,7 @@ def test_browsing_subfolders(qapp, window, tmp_path):
     page.contents.itemActivated.emit(contents_item(page, "match 2"), 0)
     assert page.folder == (root / "match 2").resolve()
     assert page.tree.currentIndex().isValid()
-    assert page.fs_model.filePath(page.tree.currentIndex()) == str(page.folder)
+    assert Path(page.fs_model.filePath(page.tree.currentIndex())) == page.folder
     # Up selects the folder we came from; Back/Forward
     page.go_up()
     assert page.folder == root.resolve() and page.contents.currentItem().text(0) == "match 2"
