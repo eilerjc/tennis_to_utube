@@ -38,8 +38,8 @@ class Flow:
             return ["match_end"]
         if self.set_can_end:
             return ["set_end_a", "set_end_b", "set_end_unknown"]
-        if self.in_game:
-            return ["point_a", "point_b", "point_unknown", "serve_in", "fault", "let", "ace",
+        if self.in_game:  # serves stay available but are not pushed (optional finer level)
+            return ["point_a", "point_b", "point_unknown",
                     "game_end_a", "game_end_b", "game_end_unknown"]
         return ["game_start", "game_start_other_server", "set_start"]
 

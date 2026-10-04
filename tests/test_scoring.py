@@ -503,3 +503,11 @@ def test_tiebreak_start_needs_level_games():
     an, view = final(log.events)
     assert [i.code for i in an.issues] == ["score_conflict"]
     assert view.in_tiebreak  # applied as entered
+
+
+@pytest.mark.parametrize("text, sets", [
+    ("6-4 3-6", [(6, 4), (3, 6)]), ("6–4, 7-6(5), [10-8]", [(6, 4), (7, 6), (1, 0)]),
+    ("", []), ("6-6", None), ("6-x", None), ("[8-10]", [(0, 1)]),
+])
+def test_parse_sets(text, sets):
+    assert scoring.parse_sets(text) == sets

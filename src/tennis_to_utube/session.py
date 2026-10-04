@@ -1,0 +1,192 @@
+"""An open match being marked: edits, undo/redo, lock, analysis and saving (no Qt).
+
+Every edit goes through :class:`Session` so it can be undone. Undo restores a snapshot of
+the whole match file (small), but never moves the event-id counter back, so ids stay unique.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from . import catalog, matchfile, names
+from .config import Config
+from .flow import Flow, analyze_match, flow_at
+from .matchfile import Event, MatchFile
+from .scoring import Analysis, ScoreView, other
+from .shortcuts import ACTIONS_BY_ID
+
+MAX_UNDO = 500
+
+
+class LockedError(RuntimeError):
+    pass
+
+
+def point_server_side(view: ScoreView) -> str | None:
+    """Side serving the next point, if the score says so (tiebreaks rotate every 2 points)."""
+    if view.server is None:
+        return None
+    if view.in_tiebreak:
+        if view.points is None:
+            return None
+        k = sum(view.points)
+        return view.server if ((k + 1) // 2) % 2 == 0 else other(view.server)
+    return view.server
+
+
+class Session:
+    def __init__(self, mf: MatchFile, path: str | Path, config: Config | None = None):
+        self.mf = mf
+        self.path = Path(path)
+        self.config = config
+        self.locked = False
+        self.dirty = False
+        self._undo: list[dict[str, Any]] = []
+        self._redo: list[dict[str, Any]] = []
+        self._analysis: Analysis | None = None
+
+    # -- derived state -------------------------------------------------------------
+
+    @property
+    def analysis(self) -> Analysis:
+        if self._analysis is None:
+            self._analysis = analyze_match(self.mf, self.config)
+        return self._analysis
+
+    def flow_at(self, t_ms: int) -> Flow:
+        return flow_at(self.analysis, self.mf.match, t_ms)
+
+    def event(self, event_id: str) -> Event:
+        return self.mf.event(event_id)
+
+    # -- undo ----------------------------------------------------------------------
+
+    def _before_edit(self) -> None:
+        self._undo.append(self.mf.to_dict())
+        del self._undo[:-MAX_UNDO]
+        self._redo.clear()
+
+    def _after_edit(self) -> None:
+        self.dirty = True
+        self._analysis = None
+
+    def _restore(self, data: dict[str, Any]) -> None:
+        seq = self.mf.next_event_seq
+        self.mf = MatchFile.from_dict(data)
+        self.mf.next_event_seq = max(seq, self.mf.next_event_seq)  # ids are never reused
+        self._after_edit()
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo)
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
+    def undo(self) -> bool:
+        if not self._undo:
+            return False
+        self._redo.append(self.mf.to_dict())
+        self._restore(self._undo.pop())
+        return True
+
+    def redo(self) -> bool:
+        if not self._redo:
+            return False
+        self._undo.append(self.mf.to_dict())
+        self._restore(self._redo.pop())
+        return True
+
+    # -- edits -----------------------------------------------------------------------
+
+    def _check_unlocked(self) -> None:
+        if self.locked:
+            raise LockedError("events are locked")
+
+    def add(self, t_ms: int, type: str, **fields: Any) -> Event:
+        """New event (allowed while locked: the lock freezes existing events)."""
+        self._before_edit()
+        e = self.mf.add_event(max(0, int(t_ms)), type, **fields)
+        self._after_edit()
+        return e
+
+    def delete(self, event_id: str) -> Event:
+        self._check_unlocked()
+        self._before_edit()
+        e = self.mf.remove_event(event_id)
+        self._after_edit()
+        return e
+
+    def move(self, event_id: str, t_ms: int) -> Event:
+        self._check_unlocked()
+        e = self.mf.event(event_id)
+        self._before_edit()
+        e.t_ms = max(0, int(t_ms))
+        self._after_edit()
+        return e
+
+    def update(self, event_id: str, **fields: Any) -> Event:
+        self._check_unlocked()
+        e = self.mf.event(event_id)
+        self._before_edit()
+        for key, value in fields.items():
+            if not hasattr(e, key) or key in ("id", "extra"):
+                raise AttributeError(key)
+            setattr(e, key, value)
+        self._after_edit()
+        return e
+
+    def rename_player(self, old: str, new: str) -> int:
+        self._before_edit()
+        try:
+            count = names.rename_player(self.mf, old, new)
+        except ValueError:
+            self._undo.pop()
+            raise
+        self._after_edit()
+        return count
+
+    def set_match(self, **fields: Any) -> None:
+        """Change match settings (kind, format, ...)."""
+        self._before_edit()
+        self.mf.match.update(fields)
+        self._after_edit()
+
+    # -- marking --------------------------------------------------------------------------
+
+    def mark(self, action_id: str, t_ms: int, **extra: Any) -> Event:
+        """Log the event an action stands for at ``t_ms``, filling in who serves."""
+        action = ACTIONS_BY_ID[action_id]
+        if action.event_type is None:
+            raise ValueError(f"{action_id} does not log an event")
+        fields: dict[str, Any] = {}
+        if action.result is not None:
+            fields["result"] = action.result
+        flow = self.flow_at(t_ms)
+        match = self.mf.match
+        if action.event_type == catalog.GAME_START:
+            side, player = flow.next_server, flow.next_server_player
+            if side is None:
+                side, player = "A", None  # unknown: assume ours; Shift+G for the other side
+            if action.variant == "other_server":
+                side = other(side)
+                player = None
+            if player is None and match.get("kind") != "doubles":
+                player = names.players(match, side)[0]
+            fields.update(side=side, player=player)
+        elif action.event_type in (catalog.SERVE_IN, catalog.FAULT, catalog.LET, catalog.ACE):
+            side = point_server_side(flow.score)
+            if side is not None:
+                fields["side"] = side
+                if match.get("kind") != "doubles":
+                    fields["player"] = names.players(match, side)[0]
+        fields.update(extra)
+        return self.add(t_ms, action.event_type, **fields)
+
+    # -- saving ------------------------------------------------------------------------------
+
+    def save(self) -> None:
+        matchfile.save(self.mf, self.path)
+        self.dirty = False

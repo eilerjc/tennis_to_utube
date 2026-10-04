@@ -90,3 +90,108 @@ def test_wheel_steps_frames_only_when_paused(window, qapp):
     before = page.player._base_ms
     wheel(-120)
     assert page.player._base_ms == before  # ignored while playing
+
+
+def test_marking_with_keys_updates_score_and_suggestions(window):
+    page = window.mark
+    page.player.seek(1_000)
+    page.actions["game_start"].trigger()
+    assert page.buttons.buttons["point_a"].styleSheet()  # in a game: points suggested
+    assert not page.buttons.buttons["game_start"].styleSheet()
+    for t in (2_000, 3_000, 4_000, 5_500):
+        page.player.seek(t)
+        page.actions["point_a"].trigger()
+    assert "Between games" in page.score_panel.text() or "1" in page.score_panel.text()
+    events = [(e.t_ms, e.type, e.result) for e in page.match.sorted_events()]
+    assert (1_000, "game_start", None) in events and (5_500, "point", "A") in events
+    flow = page.session.flow_at(page.position())
+    assert flow.score.games == (1, 0)
+
+
+def test_reaction_offset_while_playing(window):
+    page = window.mark
+    page.player.seek(10_000)
+    page.player.set_speed(0.5)
+    page.player.set_paused(False)
+    page.actions["fault"].trigger()
+    page.player.set_paused(True)
+    e = page.session.event(page.selected_id)
+    # 200 ms real time at half speed = 100 ms of video before the playhead
+    assert 9_850 <= e.t_ms <= 9_950
+
+
+def test_undo_delete_nudge_lock(window):
+    page = window.mark
+    page.player.seek(30_000)
+    page.actions["body_language"].trigger()
+    e_id = page.selected_id
+    page.actions["nudge_forward"].trigger()
+    assert page.session.event(e_id).t_ms == 30_017
+    page.actions["lock_events"].trigger()
+    page.actions["delete_event"].trigger()
+    assert any(e.id == e_id for e in page.match.events)  # locked
+    assert "Unlock" in page.buttons.buttons["lock_events"].text()
+    page.actions["lock_events"].trigger()
+    page.actions["delete_event"].trigger()
+    assert all(e.id != e_id for e in page.match.events)
+    page.actions["undo"].trigger()
+    assert any(e.id == e_id for e in page.match.events)
+    assert window.match is page.match
+
+
+def test_dialog_events(window):
+    page = window.mark
+    page.ask_note = lambda: "watch her feet"
+    page.ask_details = lambda dialog: {"games": [3, 2]}
+    page.player.seek(40_000)
+    page.actions["note"].trigger()
+    page.actions["score_state"].trigger()
+    types = {e.type: e for e in page.match.events}
+    assert types["note"].note == "watch her feet"
+    assert types["score_state"].details == {"games": [3, 2]}
+    page.ask_note = lambda: None  # cancelled
+    n = len(page.match.events)
+    page.actions["note"].trigger()
+    assert len(page.match.events) == n
+
+
+def test_autosave(window, qapp):
+    import time
+
+    page = window.mark
+    page.player.seek(50_000)
+    page.actions["good_recovery"].trigger()
+    path = page.session.path
+    end = time.monotonic() + 5
+    while page.session.dirty and time.monotonic() < end:
+        qapp.processEvents()
+        time.sleep(0.05)
+    assert not page.session.dirty
+    assert any(e.type == "good_recovery" for e in matchfile.load(path).events)
+    assert path.with_name(path.name + ".bak").exists()
+
+
+def test_buttons_show_short_names_and_keys(window):
+    page = window.mark
+    page.session.mf.match["sides"]["A"]["players"] = ["Alexandra Jones"]
+    from tennis_to_utube import names
+
+    page.buttons.set_names(names.short_side_names(page.match.match))
+    assert page.buttons.buttons["point_a"].text() == "Point Alex J\n[A]"
+    assert page.buttons.buttons["set_end_b"].text().endswith("[Shift+X]")
+    assert page.buttons.buttons["match_end"].text() == "Match end"  # menu-only, no key
+
+
+def test_score_state_dialog_parsing(qapp):
+    from tennis_to_utube.gui.event_panel import ScoreStateDialog
+
+    d = ScoreStateDialog({"kind": "singles", "sides": {"A": {"players": ["Emma"]},
+                                                        "B": {"players": ["Sara"]}}})
+    d.sets.setText("6-4")
+    d.games.setText("3-2")
+    d.points.setText("30-40")
+    d.server.setCurrentIndex(2)
+    assert d.validate() == ""
+    assert d.details() == {"sets": [[6, 4]], "games": [3, 2], "points": [2, 3], "server": "Sara"}
+    d.points.setText("31-40")
+    assert "Points" in d.validate()

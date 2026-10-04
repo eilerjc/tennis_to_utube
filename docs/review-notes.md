@@ -29,3 +29,24 @@ Assumptions and open points to go through together. Newest at the bottom of each
   stand-in clock lets you mark anyway.
 - mpv options: `hwdec=auto-safe`, `hr-seek=yes`, `keep-open=always`. Back-stepping on 4K HEVC
   may be slow (DESIGN §15) — please judge the feel.
+
+## GUI step 3 — Marking, score panel, undo, autosave
+- **Reaction offset** (200 ms × speed) applies only while playing; when paused the mark
+  goes exactly on the frame shown.
+- **G (Game start)** records the predicted server. If nobody is known yet (first game), it
+  assumes **side A (ours)** serves; use Shift+G for the other side. In doubles, a side's
+  first service game has no player prediction (the team chooses) — the server can be set
+  later (event editing comes with the lists).
+- Serve events (serve in, fault, let, ace) record the serving side, and the player in singles.
+- **Suggested buttons** (green): during a game the point and Game end buttons; between games
+  Game start/Set start; when the score says a set ended, the Set end buttons; after the
+  match, Match end. Serve buttons are never pushed (optional level).
+- **Selected event** (for Delete / move one frame) = the event just marked, or the one jumped
+  to with ↑/↓ (clicking in the timeline/lists comes next).
+- **Lock** freezes existing events (no delete/move/edit) but still allows new marks.
+- **Autosave** 1.5 s after each change (and when leaving/closing), keeping `.bak` of the
+  previous save. Undo/redo up to 500 steps per session (not across restarts).
+- Set score dialog: type "6-4 3-6", "3-2", "30-40"/"AD-40"/"deuce" and pick the server;
+  only filled parts are stored. Rules change dialog: preset + no-ad + match-tiebreak tick.
+  Ending state: final sets ("6-4 3-6 [10-8]"), stored with `"entered": true`.
+- Buttons show short names ("Point Emma S") and their key; menu-only events show no key.

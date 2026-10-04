@@ -16,6 +16,7 @@ looked up in the match to find their side.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, fields, replace
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -660,6 +661,25 @@ def parse_pair(text: str) -> tuple[int, int] | None:
     if len(parts) == 2 and all(p.isdigit() for p in parts):
         return int(parts[0]), int(parts[1])
     return None
+
+
+def parse_sets(text: str) -> list[tuple[int, int]] | None:
+    """Set scores as typed: "6-4 3-6", "6-4, 7-6(5), [10-8]" → [(6, 4), (7, 6), (1, 0)].
+
+    A bracketed match tiebreak counts as a 1-0 set; "(5)" tiebreak details are ignored.
+    Empty text → []; anything not understood → None.
+    """
+    out = []
+    for token in re.split(r"[,\s]+", text.strip()):
+        if not token:
+            continue
+        token = re.sub(r"\(\d+\)$", "", token)
+        bracket = token.startswith("[") and token.endswith("]")
+        pair = parse_pair(token.strip("[]"))
+        if pair is None or pair[0] == pair[1]:
+            return None
+        out.append(((1, 0) if pair[0] > pair[1] else (0, 1)) if bracket else pair)
+    return out
 
 
 def parse_points(text: str, tiebreak: bool = False) -> tuple[int, int] | None:

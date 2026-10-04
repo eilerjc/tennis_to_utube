@@ -31,7 +31,6 @@ class MainWindow(QMainWindow):
         shortcuts = shortcuts or default_shortcuts()
         self.config = config
         self.state = state
-        self.match: MatchFile | None = None
         self.match_path: Path | None = None
         self.setWindowTitle(APP_TITLE)
         self.setMinimumSize(1280, 800)
@@ -49,6 +48,7 @@ class MainWindow(QMainWindow):
         self._set_match_steps_enabled(False)
 
         self.files.matchReady.connect(self.open_match)
+        self.mark.message.connect(lambda text: self.statusBar().showMessage(text, 5000))
         warnings = config.warnings + shortcuts.warnings
         if warnings:
             self.statusBar().showMessage("  |  ".join(warnings), 30000)
@@ -57,8 +57,13 @@ class MainWindow(QMainWindow):
         for i in (1, 2, 3):
             self.steps.setTabEnabled(i, enabled)
 
+    @property
+    def match(self) -> MatchFile | None:
+        """The open match (owned by the Mark step's session)."""
+        return self.mark.match
+
     def open_match(self, mf: MatchFile, path: Path) -> None:
-        self.match, self.match_path = mf, Path(path)
+        self.match_path = Path(path)
         self.setWindowTitle(f"{APP_TITLE} — {self.match_path.name}")
         self._set_match_steps_enabled(True)
         self.statusBar().showMessage(f"Opened {self.match_path}", 5000)

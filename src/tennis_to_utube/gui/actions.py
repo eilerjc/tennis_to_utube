@@ -28,6 +28,11 @@ def key_text(key: str) -> str:
     return "+".join(_KEY_GLYPHS.get(p, p) for p in parts)
 
 
+def call(handler: Callable[[], None]) -> Callable[..., None]:
+    """Slot that ignores signal arguments (``triggered``/``clicked`` pass ``checked``)."""
+    return lambda *_args: handler()
+
+
 def build_actions(owner: QWidget, shortcuts: Shortcuts,
                   handlers: Mapping[str, Callable[[], None]]) -> dict[str, QAction]:
     """One QAction per action id with a handler; shortcuts work while ``owner`` (or a child)
@@ -40,7 +45,7 @@ def build_actions(owner: QWidget, shortcuts: Shortcuts,
         act.setShortcuts([QKeySequence(k) for k in shortcuts.keys_for(a.id)])
         act.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         act.setAutoRepeat(a.id in REPEATING)
-        act.triggered.connect(handlers[a.id])
+        act.triggered.connect(call(handlers[a.id]))
         owner.addAction(act)
         actions[a.id] = act
     return actions

@@ -5,17 +5,22 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QHBoxLayout, QLabel, QPushButton, QSplitter, QVBoxLayout, QWidget,
+    QButtonGroup, QHBoxLayout, QInputDialog, QLabel, QPushButton, QScrollArea, QSplitter,
+    QVBoxLayout, QWidget,
 )
 
-from .. import matchfile, playback
+from .. import catalog, matchfile, names, playback
 from ..config import Config
 from ..matchfile import MatchFile
-from ..shortcuts import Shortcuts
-from .actions import build_actions, key_text
+from ..session import LockedError, Session
+from ..shortcuts import ACTIONS, Shortcuts
+from .actions import build_actions, call, key_text
+from .event_panel import EndingStateDialog, EventButtons, RulesDialog, ScorePanel, ScoreStateDialog
 from .player import PlayerBase, create_player
+
+AUTOSAVE_DELAY_MS = 1500
 
 
 def _button(text: str, tip: str = "") -> QPushButton:
@@ -48,6 +53,7 @@ class TransportBar(QWidget):
         for s in speeds:
             b = _button(f"{s:g}×", "Playback speed")
             b.setCheckable(True)
+            b.setFixedWidth(52)
             self.speed_group.addButton(b)
             self.speed_buttons[s] = b
             layout.addWidget(b)
@@ -68,15 +74,22 @@ class TransportBar(QWidget):
 
 
 class MarkPage(QWidget):
+    edited = Signal()  # the match changed (events, names, format, ...)
+    message = Signal(str)  # for the status bar
+
     def __init__(self, config: Config, shortcuts: Shortcuts,
                  player_factory: Callable[[QWidget | None], PlayerBase] = create_player,
                  parent: QWidget | None = None):
         super().__init__(parent)
         self.config = config
         self.shortcuts = shortcuts
-        self.match: MatchFile | None = None
-        self.match_path: Path | None = None
+        self.session: Session | None = None
+        self.selected_id: str | None = None
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._autosave = QTimer(self)
+        self._autosave.setSingleShot(True)
+        self._autosave.setInterval(AUTOSAVE_DELAY_MS)
+        self._autosave.timeout.connect(self.save)
 
         self.player = player_factory(self)
         speeds = [float(s) for s in config.get("playback.speeds")]
@@ -89,17 +102,23 @@ class MarkPage(QWidget):
         left = QWidget()
         left.setLayout(video_col)
 
-        # Filled in by later steps: score panel + event buttons, timeline, lists.
+        # Right: score and event buttons. Bottom: timeline and lists (later steps).
+        self.score_panel = ScorePanel()
         self.side_panel = QWidget()
-        self.side_panel.setMinimumWidth(420)
         self.side_layout = QVBoxLayout(self.side_panel)
+        self.side_layout.addWidget(self.score_panel)
         self.bottom = QWidget()
         self.bottom_layout = QVBoxLayout(self.bottom)
         self.bottom_layout.setContentsMargins(0, 0, 0, 0)
 
         top = QSplitter(Qt.Orientation.Horizontal)
         top.addWidget(left)
-        top.addWidget(self.side_panel)
+        side_scroll = QScrollArea()
+        side_scroll.setWidgetResizable(True)
+        side_scroll.setWidget(self.side_panel)
+        side_scroll.setMinimumWidth(540)
+        side_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        top.addWidget(side_scroll)
         top.setStretchFactor(0, 1)
         outer = QSplitter(Qt.Orientation.Vertical)
         outer.addWidget(top)
@@ -121,10 +140,25 @@ class MarkPage(QWidget):
             "frame_forward": lambda: self.player.step(1),
             "prev_event": lambda: self.jump_event(forward=False),
             "next_event": lambda: self.jump_event(forward=True),
+            "undo": self.undo,
+            "redo": self.redo,
+            "delete_event": self.delete_selected,
+            "nudge_back": lambda: self.nudge_selected(-1),
+            "nudge_forward": lambda: self.nudge_selected(1),
+            "lock_events": self.toggle_lock,
+            "score_state": self.mark_score_state,
+            "note": self.mark_note,
+            "rules_change": self.mark_rules_change,
+            "ending_state": self.mark_ending_state,
         }
+        for a in ACTIONS:
+            if a.event_type is not None and a.id not in handlers:
+                handlers[a.id] = lambda a=a: self.mark(a.id)
         self.actions = build_actions(self, shortcuts, handlers)
+        self.buttons = EventButtons(shortcuts, handlers)
+        self.side_layout.addWidget(self.buttons)
         for action_id, b in self.transport.buttons.items():
-            b.clicked.connect(handlers[action_id])
+            b.clicked.connect(call(handlers[action_id]))
         for s, b in self.transport.speed_buttons.items():
             b.clicked.connect(lambda _c=False, s=s: self.player.set_speed(s))
         self.player.positionChanged.connect(self._on_position)
@@ -133,12 +167,21 @@ class MarkPage(QWidget):
 
     # -- match -------------------------------------------------------------------
 
+    @property
+    def match(self) -> MatchFile | None:
+        return self.session.mf if self.session else None
+
     def load_match(self, mf: MatchFile, path: Path) -> None:
-        self.match, self.match_path = mf, Path(path)
+        self.save()
+        self.session = Session(mf, path, self.config)
+        self.selected_id = None
         paths = [matchfile.resolve_source_path(s.path, path) for s in mf.sources]
         fps = mf.sources[0].fps if mf.sources else None
         self.player.load(paths, [s.duration_ms for s in mf.sources], fps)
         self.player.set_speed(1.0)
+        self.buttons.set_names(names.short_side_names(
+            mf.match, int(self.config.get("names.short_first_letters"))))
+        self.refresh()
         self.setFocus()
 
     def position(self) -> int:
@@ -147,6 +190,123 @@ class MarkPage(QWidget):
     def _on_position(self, t_ms: int) -> None:
         total = self.player.duration_ms
         self.transport.time.setText(f"{playback.clock_text(t_ms)} / {playback.clock_text(total)}")
+        self._show_flow(t_ms)
+
+    def _show_flow(self, t_ms: int) -> None:
+        if self.session is None:
+            return
+        flow = self.session.flow_at(t_ms)
+        self.score_panel.show_flow(flow, self.session.mf.match)
+        self.buttons.set_suggested(flow.suggested())
+
+    def refresh(self) -> None:
+        """Redraw everything that depends on the events."""
+        self._show_flow(self.position())
+        locked = self.session is not None and self.session.locked
+        self.buttons.buttons["lock_events"].setText(
+            ("Unlock events" if locked else "Lock events") + "\n[" +
+            key_text((self.shortcuts.keys_for("lock_events") or ("",))[0]) + "]")
+
+    # -- editing -------------------------------------------------------------------
+
+    def _after_edit(self, text: str) -> None:
+        self.refresh()
+        self.edited.emit()
+        self.message.emit(text)
+        self._autosave.start()
+
+    def save(self) -> None:
+        if self.session is not None and self.session.dirty:
+            try:
+                self.session.save()
+            except OSError as exc:
+                self.message.emit(f"Could not save {self.session.path.name}: {exc}")
+
+    def mark(self, action_id: str, **extra) -> None:
+        if self.session is None:
+            return
+        t = playback.mark_time(self.position(), not self.player.is_paused(), self.player.speed(),
+                               int(self.config.get("playback.reaction_offset_ms")))
+        e = self.session.mark(action_id, t, **extra)
+        self.selected_id = e.id
+        self._after_edit(f"{catalog.label(e.type)} at {playback.clock_text(t)}")
+
+    # Dialog hooks (tests replace these)
+    def ask_note(self) -> str | None:
+        text, ok = QInputDialog.getText(self, "Note", "Note:")
+        return text if ok and text.strip() else None
+
+    def ask_details(self, dialog) -> dict | None:
+        return dialog.details() if dialog.exec() else None
+
+    def mark_note(self) -> None:
+        if self.session is not None and (text := self.ask_note()) is not None:
+            self.mark("note", note=text)
+
+    def mark_score_state(self) -> None:
+        if self.session is None:
+            return
+        view = self.session.flow_at(self.position()).score
+        details = self.ask_details(ScoreStateDialog(self.session.mf.match, bool(view.in_tiebreak), self))
+        if details:
+            self.mark("score_state", details=details)
+
+    def mark_rules_change(self) -> None:
+        if self.session is not None:
+            details = self.ask_details(RulesDialog(self.session.mf.match.get("format"), self))
+            if details:
+                self.mark("rules_change", details=details)
+
+    def mark_ending_state(self) -> None:
+        if self.session is not None:
+            details = self.ask_details(EndingStateDialog(self))
+            if details:
+                self.mark("ending_state", details=details)
+
+    def _edit(self, fn, text: str) -> None:
+        try:
+            fn()
+        except LockedError:
+            self.message.emit("Events are locked (Lock events to unlock)")
+            return
+        except KeyError:
+            self.selected_id = None
+            self.message.emit("No event selected")
+            return
+        self._after_edit(text)
+
+    def delete_selected(self) -> None:
+        if self.session is None or self.selected_id is None:
+            self.message.emit("No event selected")
+            return
+        e = self.session.event(self.selected_id)
+        self._edit(lambda: self.session.delete(e.id), f"Deleted {catalog.label(e.type)}")
+        if self.session and all(x.id != e.id for x in self.session.mf.events):
+            self.selected_id = None
+
+    def nudge_selected(self, frames: int) -> None:
+        if self.session is None or self.selected_id is None:
+            self.message.emit("No event selected")
+            return
+        e = self.session.event(self.selected_id)
+        t = round(e.t_ms + frames * self.player.frame)
+        self._edit(lambda: self.session.move(e.id, t), f"Moved to {playback.clock_text(t)}")
+        if not self.session.locked:
+            self.player.seek(self.session.event(e.id).t_ms)
+
+    def toggle_lock(self) -> None:
+        if self.session is not None:
+            self.session.locked = not self.session.locked
+            self.refresh()
+            self.message.emit("Events locked" if self.session.locked else "Events unlocked")
+
+    def undo(self) -> None:
+        if self.session is not None and self.session.undo():
+            self._after_edit("Undone")
+
+    def redo(self) -> None:
+        if self.session is not None and self.session.redo():
+            self._after_edit("Redone")
 
     # -- navigation --------------------------------------------------------------
 
@@ -158,6 +318,9 @@ class MarkPage(QWidget):
         if t is not None:
             self.player.set_paused(True)
             self.player.seek(t)
+            self.selected_id = next(e.id for e in self.match.sorted_events() if e.t_ms == t)
 
     def shutdown(self) -> None:
+        self._autosave.stop()
+        self.save()
         self.player.shutdown()
