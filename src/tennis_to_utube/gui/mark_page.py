@@ -403,20 +403,28 @@ class MarkPage(QWidget):
             return
         self._after_edit(text)
 
+    def _selected_event(self):
+        """The selected event, or None (with a message) — it may be gone after an undo."""
+        if self.session is not None and self.selected_id is not None:
+            try:
+                return self.session.event(self.selected_id)
+            except KeyError:
+                self.selected_id = None
+        self.message.emit("No event selected")
+        return None
+
     def delete_selected(self) -> None:
-        if self.session is None or self.selected_id is None:
-            self.message.emit("No event selected")
+        e = self._selected_event()
+        if e is None:
             return
-        e = self.session.event(self.selected_id)
         self._edit(lambda: self.session.delete(e.id), f"Deleted {catalog.label(e.type)}")
         if self.session and all(x.id != e.id for x in self.session.mf.events):
             self.selected_id = None
 
     def nudge_selected(self, frames: int) -> None:
-        if self.session is None or self.selected_id is None:
-            self.message.emit("No event selected")
+        e = self._selected_event()
+        if e is None:
             return
-        e = self.session.event(self.selected_id)
         t = round(e.t_ms + frames * self.player.frame)
         self._edit(lambda: self.session.move(e.id, t), f"Moved to {playback.clock_text(t)}")
         if not self.session.locked:

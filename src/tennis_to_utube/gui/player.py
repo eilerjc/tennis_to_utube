@@ -170,13 +170,14 @@ class MpvPlayer(PlayerBase):
         self.setAttribute(Qt.WidgetAttribute.WA_DontCreateNativeAncestors)
         self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
         self.setStyleSheet("background: black")
-        options = dict(
-            wid=str(int(self.winId())), keep_open="always", pause=True, hr_seek="yes",
-            hr_seek_framedrop="no", hwdec="auto-safe", osc=False, input_default_bindings=False,
-            input_vo_keyboard=False, input_cursor=False, cursor_autohide="no",
+        self._mpv_module = mpv
+        self._options = dict(
+            keep_open="always", pause=True, hr_seek="yes", hr_seek_framedrop="no",
+            hwdec="auto-safe", osc=False, input_default_bindings=False, input_vo_keyboard=False,
+            input_cursor=False, cursor_autohide="no",
         )
-        options.update(mpv_options)
-        self.mpv = mpv.MPV(**options)
+        self._options.update(mpv_options)
+        self.mpv = None  # created on first load, once the widget sits in its final window
         self._paused = True
         self._last = -1
         self._timer = QTimer(self)
@@ -184,7 +185,15 @@ class MpvPlayer(PlayerBase):
         self._timer.timeout.connect(self._poll)
         self._timer.start()
 
+    def _ensure_mpv(self):
+        if self.mpv is None:
+            # winId() only now: a native window id can change when a widget is reparented
+            self.mpv = self._mpv_module.MPV(wid=str(int(self.winId())), **self._options)
+        return self.mpv
+
     def _poll(self) -> None:
+        if self.mpv is None:
+            return
         pos = self.position_ms()
         if pos != self._last:
             self._last = pos
@@ -197,26 +206,29 @@ class MpvPlayer(PlayerBase):
     def load(self, paths, durations_ms, fps) -> None:
         self.duration_ms = sum(durations_ms)
         self.frame = playback.frame_ms(fps)
-        self.mpv.pause = True
-        self.mpv.play(playback.edl_url(paths, durations_ms))
+        player = self._ensure_mpv()
+        player.pause = True
+        player.play(playback.edl_url(paths, durations_ms))
 
     def position_ms(self) -> int:
         try:
             return playback.position_ms(self.mpv.time_pos)
-        except Exception:  # mpv not ready yet
+        except Exception:  # mpv not created or nothing loaded yet
             return 0
 
     def is_paused(self) -> bool:
-        return bool(self.mpv.pause)
+        return self.mpv is None or bool(self.mpv.pause)
 
     def speed(self) -> float:
-        return float(self.mpv.speed)
+        return 1.0 if self.mpv is None else float(self.mpv.speed)
 
     def set_paused(self, paused: bool) -> None:
-        self.mpv.pause = paused
+        if self.mpv is not None:
+            self.mpv.pause = paused
 
     def set_speed(self, speed: float) -> None:
-        self.mpv.speed = speed
+        if self.mpv is not None:
+            self.mpv.speed = speed
         self.speedChanged.emit(speed)
 
     def seek(self, t_ms: int, precise: bool = True) -> None:
@@ -227,13 +239,17 @@ class MpvPlayer(PlayerBase):
             return  # nothing loaded
 
     def step(self, frames: int) -> None:
+        if self.mpv is None:
+            return
         command = "frame-step" if frames > 0 else "frame-back-step"
         for _ in range(abs(frames)):
             self.mpv.command(command)
 
     def shutdown(self) -> None:
         self._timer.stop()
-        self.mpv.terminate()
+        if self.mpv is not None:
+            self.mpv.terminate()
+            self.mpv = None
 
 
 def create_player(parent: QWidget | None = None) -> PlayerBase:

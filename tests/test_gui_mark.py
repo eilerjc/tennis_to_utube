@@ -195,3 +195,15 @@ def test_score_state_dialog_parsing(qapp):
     assert d.details() == {"sets": [[6, 4]], "games": [3, 2], "points": [2, 3], "server": "Sara"}
     d.points.setText("31-40")
     assert "Points" in d.validate()
+
+
+def test_selected_event_gone_after_undo(window):
+    page = window.mark
+    page.player.seek(70_000)
+    page.actions["strategy"].trigger()
+    page.actions["undo"].trigger()  # the selected event no longer exists
+    messages = []
+    page.message.connect(messages.append)
+    page.actions["delete_event"].trigger()
+    page.actions["nudge_forward"].trigger()
+    assert messages == ["No event selected", "No event selected"] and page.selected_id is None
