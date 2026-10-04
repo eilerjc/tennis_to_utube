@@ -454,6 +454,7 @@ class ScoreView:
     winner: str | None
     certain: bool  # exactly one possible state
     fmt: Format
+    pending_game: str | None = None  # a game just ended on points (Game end not marked yet)
 
 
 def view_of(states: Iterable[State]) -> ScoreView:
@@ -472,7 +473,8 @@ def view_of(states: Iterable[State]) -> ScoreView:
         sets=sets, games=common(lambda s: s.games), points=common(lambda s: s.points),
         server=common(lambda s: s.server), in_tiebreak=common(lambda s: s.in_tiebreak),
         pending_set=common(lambda s: s.pending_set), winner=common(lambda s: s.winner),
-        certain=len(states) == 1, fmt=states[0].fmt if states else Format())
+        certain=len(states) == 1, fmt=states[0].fmt if states else Format(),
+        pending_game=common(lambda s: s.pending_game))
 
 
 @dataclass(frozen=True)

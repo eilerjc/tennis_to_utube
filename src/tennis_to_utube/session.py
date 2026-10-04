@@ -133,7 +133,8 @@ class Session:
         """Proposed cuts for the chosen rules; unticked ones have ``enabled=False``."""
         unticked = set(self._trim_settings().get("unticked", []))
         return [dataclasses.replace(c, enabled=c.key not in unticked)
-                for c in propose_cuts(self.mf.events, self.total_ms, self.trim_rules())]
+                for c in propose_cuts(self.mf.events, self.total_ms, self.trim_rules(),
+                                      self.analysis)]
 
     def set_trim_rules(self, rules: list[str]) -> None:
         self._before_edit()

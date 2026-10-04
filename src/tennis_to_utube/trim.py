@@ -29,13 +29,16 @@ import threading
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Callable, Iterable, Protocol, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Protocol, Sequence
 
 from . import catalog, structure
 from .issues import Issue
 from .matchfile import Event
 from .probe import Keyframe, MediaInfo, ToolError, Tools, inspect_gop, no_window, probe
 from .timeline import Interval, Timeline, complement, merge_intervals
+
+if TYPE_CHECKING:
+    from .scoring import Analysis, ScoreView
 
 RULES = ("warmup", "changeovers", "set_breaks", "after_match")
 RULE_LABELS = {
@@ -72,13 +75,53 @@ def _next(events: Sequence[Event], i: int, types: frozenset[str]) -> Event | Non
     return None
 
 
-def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = RULES) -> list[Cut]:
+def _games_in_set(v: ScoreView) -> tuple[int | None, int | None]:
+    """(games played in the set, set number) right after a game ended."""
+    if v.pending_set is not None:  # the game ended the set
+        last = v.sets[-1] if v.sets else None
+        return (sum(last.games) if last and last.games else None), len(v.sets) if v.sets else None
+    return (sum(v.games) if v.games is not None else None,
+            len(v.sets) + 1 if v.sets is not None else None)
+
+
+def score_game_ends(analysis: Analysis) -> list[tuple[Event, int, int | None]]:
+    """Every game the score says ended: (anchor event, games played in its set, set number).
+
+    A game ended by a point is anchored on that point, or on its Game end if one is marked
+    before play goes on; a game recorded at game level is anchored on its Game end.
+    Games whose position is not certain are left out.
+    """
+    out: list[tuple[Event, int, int | None]] = []
+    prev_pending = None
+    for st in analysis.steps:
+        e, v = st.event, st.view
+        ended = False
+        if e.type == catalog.GAME_END:
+            if prev_pending is not None and out:
+                out[-1] = (e, out[-1][1], out[-1][2])  # the marked end of that game
+            else:
+                ended = True  # game-level scoring
+        elif v.pending_game is not None and (
+                e.type in (catalog.POINT, catalog.ACE)
+                or (e.type == catalog.FAULT and prev_pending is None)):  # a double fault
+            ended = True
+        if ended:
+            count, set_no = _games_in_set(v)
+            if count is not None:
+                out.append((e, count, set_no))
+        prev_pending = v.pending_game
+    return out
+
+
+def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = RULES,
+                 analysis: Analysis | None = None) -> list[Cut]:
     """Cuts suggested by the chosen rules, sorted by start time.
 
     * warmup: from 0 to the first Match/Set/Game start or Set score.
-    * changeovers: from the Game end that closes an odd game of a set to the next Game
-      start (game parity from :mod:`structure`; while it is unknown, e.g. the video
-      starts mid-match without a Set score giving the games, none are proposed).
+    * changeovers: from the end of an odd game of a set to the next Game start. With a score
+      ``analysis``, games ended by points count too (anchored on the game-ending point, or
+      its Game end if marked); without one, Game end marks are counted (:mod:`structure`).
+      Where the game count is unknown, none are proposed.
     * set_breaks: from Set end to the next Set or Game start.
     * after_match: from Match end to the end of the video.
     """
@@ -99,9 +142,17 @@ def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = 
         if first is not None:
             add("warmup", first, 0, first.t_ms, RULE_LABELS["warmup"])
 
+    if analysis is not None and "changeovers" in rules:
+        index = {e.id: i for i, e in enumerate(evs)}
+        for e, count, set_no in score_game_ends(analysis):
+            nxt = _next(evs, index[e.id], frozenset({catalog.GAME_START}))
+            if count % 2 == 1 and nxt is not None:
+                set_txt = f" (set {set_no})" if set_no else ""
+                add("changeovers", e, e.t_ms, nxt.t_ms, f"Changeover after game {count}{set_txt}")
+
     for i, (e, pos) in enumerate(structure.walk(evs)):
         set_txt = f" (set {pos.set_no})" if pos.set_no else ""
-        if e.type == catalog.GAME_END and "changeovers" in rules:
+        if e.type == catalog.GAME_END and "changeovers" in rules and analysis is None:
             nxt = _next(evs, i, frozenset({catalog.GAME_START}))
             if pos.games_closed is not None and pos.games_closed % 2 == 1 and nxt is not None:
                 add("changeovers", e, e.t_ms, nxt.t_ms,

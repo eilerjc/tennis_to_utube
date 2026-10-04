@@ -273,8 +273,9 @@ may say "won"/"lost"/"?" but all store the same type.
 
 - User picks removal rules; app lists the resulting cuts; user can untick any:
   - everything before the first Game start / Match start (warmup),
-  - **changeovers**: from the Game end closing an odd game of the set (count from a Set
-    score's games when given) to the next Game start,
+  - **changeovers**: from the end of an odd game of the set to the next Game start. The end
+    comes from the score engine, so games ended by points count too (anchored on the
+    game-ending point, or on its Game end if marked); uncertain game ends are not cut.
   - set breaks, everything after Match end.
 - Removals run exactly up to the next Game start / Set start mark; no extra pre-roll is kept
   before it. So **mark Game start where the kept footage should begin**: a lead-in before
