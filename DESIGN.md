@@ -135,7 +135,10 @@ may say "won"/"lost"/"?" but all store the same type.
 - Set start `set_start`, **Set end** `set_end` (result A / B / unknown)
 - Game start `game_start` (with server in `side`/`player`), **Game end** `game_end`
   (result A / B / unknown)
-- Tiebreak / match-tiebreak start `tiebreak_start` (normally implied by rules + score)
+- Tiebreak start `tiebreak_start` — normally implied by the format and score (e.g. 6–6). When
+  a tiebreak is played at another score (7–7, 9–9 in a pro set), the user marks Game end and
+  then Tiebreak start; the next game is then a tiebreak and decides the set. Needs level
+  games above 0–0 (a match tiebreak instead of a set is part of the format). Agreed.
 - **Rules change** `rules_change` — carries a patch to the format; applies from its position
   onward (e.g. "set 3 is a 10-point match tiebreak", decided on the fly)
 - **Set score** `score_state` — score checkpoint, allowed **at any time**, as often as needed
@@ -244,7 +247,10 @@ may say "won"/"lost"/"?" but all store the same type.
 - **Chapters are derived, not marked.** Anchors: Game start and Set start, plus a Set score
   marked before any of them (video starts mid-match: "Match in progress (6–4, 3–2)"). Later
   Set score corrections do not start chapters. Other events attach to the chapter they
-  fall in. Game titles are numbered by Game start events in the set.
+  fall in. Titles carry the score where the engine is certain of it: "Set 2 (6–4)",
+  "Set 1 · Game 5 (3–1) — Emma serving" (games A–B), "Set 1 · Tiebreak (6–6)",
+  "Set 3 · Match tiebreak". Numbers come from the score once results are recorded, else
+  from counting Set/Game start events (scoring off).
 - **Gap rule:** if more than **10 minutes** pass with no anchor, add a chapter at the **first
   existing event at or after** the 10-minute point; if no event exists there, add nothing.
   Never at an arbitrary time.

@@ -258,7 +258,7 @@ def test_other_issues():
     log("rules_change", details={"format": {"best_of": 2}})
     match = {"kind": "singles", "sides": {"A": {"players": ["Ana"]}, "B": {"players": ["Sara"]}}}
     codes = [i.code for i in analyze(log.events, STD, match=match).issues]
-    assert codes == ["server_out_of_turn", "game_start_mid_game", "unexpected_tiebreak",
+    assert codes == ["server_out_of_turn", "game_start_mid_game", "score_conflict",
                      "unknown_player", "invalid_score_state", "invalid_rules_change"]
 
 
@@ -469,3 +469,37 @@ def test_pro10_preset():
     assert view.games == (10, 10) and view.in_tiebreak
     log.points("aaaaaaa")
     assert final(log.events, fmt)[1].winner == "A"
+
+
+def test_tiebreak_start_at_any_level_score():
+    # Pro set to 8 (tiebreak at 8-8 by default), but they play the tiebreak at 7-7.
+    log = Log()
+    for _ in range(7):
+        log("game_end", result="A")
+        log("game_end", result="B")
+    log("tiebreak_start")
+    log.points("aaaaaab" + "a")
+    an, view = final(log.events, PRESETS["pro_set"])
+    assert view.sets == (SetScore("A", (8, 7), (7, 1)),) and view.winner == "A"
+    assert an.issues == []
+
+
+def test_tiebreak_start_constrains_unknown_game():
+    log = Log()
+    for _ in range(6):
+        log("game_end", result="A")
+        log("game_end", result="B")
+    log("game_end", result="A")                 # 7-6
+    g = log("game_end", result="unknown")       # must be B: tiebreak needs level games
+    log("tiebreak_start")
+    an, view = final(log.events, PRESETS["pro_set"])
+    assert an.step_for(g.id).winner == "B" and view.in_tiebreak and an.issues == []
+
+
+def test_tiebreak_start_needs_level_games():
+    log = Log()
+    log("game_end", result="A")
+    log("tiebreak_start")
+    an, view = final(log.events)
+    assert [i.code for i in an.issues] == ["score_conflict"]
+    assert view.in_tiebreak  # applied as entered

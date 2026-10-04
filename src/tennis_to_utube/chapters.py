@@ -20,6 +20,7 @@ from . import catalog, structure
 from .config import Settings
 from .issues import Issue
 from .matchfile import Event
+from .scoring import Analysis, set_text
 from .trim import Remapped
 
 YOUTUBE_MIN_CHAPTERS = 3
@@ -39,19 +40,40 @@ def _player_text(e: Event) -> str:
     return f" — {e.player} serving" if e.player else ""
 
 
-def anchor_titles(events: Iterable[Event]) -> dict[str, str]:
-    """Titles for every anchor event, numbered from the whole log (removed parts too)."""
+def anchor_titles(events: Iterable[Event], analysis: Analysis | None = None) -> dict[str, str]:
+    """Titles for every anchor event, numbered from the whole log (removed parts too).
+
+    With a score ``analysis``, titles carry the score where it is certain: completed sets
+    at a Set start ("Set 2 (6–4)"), games at a Game start ("Set 1 · Game 5 (3–1)", A–B),
+    and "Tiebreak" / "Match tiebreak" in place of the game number.
+    """
+    views = {st.event.id: st.view for st in analysis.steps} if analysis else {}
     titles = {}
     play_started = False
     for e, pos in structure.walk(events):
+        view = views.get(e.id)
+        # Numbers from the score where it is certain and results were recorded; otherwise
+        # (scoring off, or not certain) from counting Set/Game start events.
+        sets = view.sets if view is not None else None
+        set_no = len(sets) + 1 if sets else pos.set_no
+        games = view.games if view is not None else None
+        game_no = sum(games) + 1 if games not in (None, (0, 0)) else pos.game_no
         if e.type == catalog.SET_START:
-            titles[e.id] = f"Set {pos.set_no}" if pos.set_no else "Set"
+            titles[e.id] = f"Set {set_no}" if set_no else "Set"
+            if view is not None and view.sets:
+                titles[e.id] += f" ({', '.join(set_text(s) for s in view.sets)})"
         elif e.type == catalog.GAME_START:
             parts = []
-            if pos.set_no:
-                parts.append(f"Set {pos.set_no}")
-            parts.append(f"Game {pos.game_no}" if pos.game_no else "Game")
-            titles[e.id] = " · ".join(parts) + _player_text(e)
+            if set_no:
+                parts.append(f"Set {set_no}")
+            if view is not None and view.in_tiebreak:
+                parts.append("Match tiebreak" if games == (0, 0) else "Tiebreak")
+            else:
+                parts.append(f"Game {game_no}" if game_no else "Game")
+            title = " · ".join(parts)
+            if games is not None and games != (0, 0):
+                title += f" ({games[0]}–{games[1]})"
+            titles[e.id] = title + _player_text(e)
         elif e.type == catalog.SCORE_STATE and not play_started:
             score = structure.score_text(e)
             titles[e.id] = "Match in progress" + (f" ({score})" if score else "")
@@ -60,9 +82,9 @@ def anchor_titles(events: Iterable[Event]) -> dict[str, str]:
 
 
 def derive_chapters(events: Sequence[Event], remapped: Sequence[Remapped], settings: Settings,
-                    total_out_ms: int) -> list[Chapter]:
+                    total_out_ms: int, analysis: Analysis | None = None) -> list[Chapter]:
     """Chapters on the output timeline, before YouTube's rules are applied."""
-    titles = anchor_titles(events)
+    titles = anchor_titles(events, analysis)
     kept = sorted(remapped, key=lambda r: r.out_ms)
     anchors = [r for r in kept if r.event.type in catalog.CHAPTER_ANCHORS and r.event.id in titles]
     chapters = [Chapter(r.link_ms(settings.lead_in_for(r.event.type)), r.out_ms,

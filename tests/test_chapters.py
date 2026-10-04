@@ -127,3 +127,38 @@ def test_chapter_for_groups_by_event_time():
     assert chapter_for(chs, 500_000).title == "C"
     assert chapter_for([ch(10, "late")], 5) is None
 
+
+
+def test_titles_carry_certain_scores():
+    from tennis_to_utube.scoring import PRESETS, analyze
+
+    events = [ev(0, "set_start"), ev(1, "game_start", player="Emma")]
+    events += [ev(2 + i, "game_end", result=r) for i, r in enumerate("AAAAABA")]  # 6-1
+    events += [ev(100, "set_end", result="A"), ev(101, "set_start"),
+               ev(102, "game_start", player="Sara"), ev(103, "game_end", result="unknown"),
+               ev(104, "game_start", player="Emma"), ev(105, "game_end", result="B"),
+               ev(106, "game_start")]
+    titles = anchor_titles(events, analyze(events, PRESETS["standard"]))
+    assert [titles[e.id] for e in events if e.id in titles] == [
+        "Set 1", "Set 1 · Game 1 — Emma serving", "Set 2 (6–1)", "Set 2 · Game 1 — Sara serving",
+        "Set 2 · Game 2 — Emma serving",  # 1–0 or 0–1: not certain, so no score
+        "Set 2 · Game 3"]  # 1–1 or 0–2: not certain either
+
+
+def test_tiebreak_titles():
+    from tennis_to_utube.scoring import PRESETS, analyze
+
+    events, t = [], 0
+    for _ in range(6):
+        for r in "AB":
+            events.append(ev(t, "game_end", result=r))
+            t += 1
+    events.append(ev(t, "game_start", player="Emma"))
+    titles = anchor_titles(events, analyze(events, PRESETS["standard"]))
+    assert list(titles.values()) == ["Set 1 · Tiebreak (6–6) — Emma serving"]
+    events = [ev(0, "set_end", result="A", details={"games": [6, 2]}),
+              ev(1, "set_end", result="B", details={"games": [3, 6]}), ev(2, "set_start"),
+              ev(3, "game_start")]
+    titles = anchor_titles(events, analyze(events, PRESETS["standard_mtb"]))
+    # sets recorded only as Set ends: numbered from the score, not from Set start events
+    assert list(titles.values()) == ["Set 3 (6–2, 3–6)", "Set 3 · Match tiebreak"]

@@ -122,6 +122,7 @@ class State:
     server: str | None = None  # side serving the current game
     pending_game: str | None = None  # a game just ended (by points), not yet marked
     pending_set: str | None = None  # a set just ended, not yet marked
+    tiebreak_now: bool = False  # a Tiebreak start was marked (at any level score, e.g. 7-7)
     winner: str | None = None  # match winner
 
     @property
@@ -142,7 +143,7 @@ class State:
 
     @property
     def in_tiebreak(self) -> bool:
-        if self.in_match_tiebreak:
+        if self.tiebreak_now or self.in_match_tiebreak:
             return True
         t = self.fmt.tiebreak_at
         return t is not None and self.games == (t, t)
@@ -197,7 +198,8 @@ def win_game(s: State, side: str, tiebreak: tuple[int, int] | None = None) -> St
 
 def win_set(s: State, result: SetScore) -> State:
     sets = s.sets + (result,) if s.sets is not None else None
-    ns = replace(s, sets=sets, games=(0, 0), points=(0, 0), pending_set=result.winner)
+    ns = replace(s, sets=sets, games=(0, 0), points=(0, 0), pending_set=result.winner,
+                 tiebreak_now=False)
     won = ns.sets_won
     if won is not None and result.winner is not None:
         if won[SIDES.index(result.winner)] > s.fmt.best_of // 2:
@@ -394,6 +396,16 @@ def _moves(s: State, e: Event, info: _Info, forced: bool) -> list[tuple[State, s
         return [(replace(s, server=info.side or s.server, pending_game=None, pending_set=None),
                  None)]
 
+    if t == catalog.TIEBREAK_START:
+        # The next game is a tiebreak, at whatever score it is marked (e.g. 7-7 in a pro
+        # set); it needs level games (not 0-0: a match tiebreak is set by the format) and
+        # no game in progress.
+        level = s.games is None or (s.games[0] == s.games[1] and s.games[0] > 0)
+        if not forced and (s.winner or not level or s.points not in ((0, 0), None)):
+            return []
+        points = (0, 0) if s.points is not None else None
+        return [(replace(s, tiebreak_now=True, points=points), None)]
+
     if t == catalog.SET_START:
         return [(replace(s, pending_game=None, pending_set=None), None)]
 
@@ -562,6 +574,7 @@ def _conflict_issue(e: Event) -> Issue:
         catalog.GAME_END: "Game end does not fit the recorded points (missing or extra point?)",
         catalog.SET_END: "Set end does not fit the recorded games (missing or extra game?)",
         catalog.SCORE_STATE: "Set score differs from what the earlier events add up to",
+        catalog.TIEBREAK_START: "Tiebreak start needs level games (e.g. 6-6) and no game in progress",
     }.get(e.type, f"{catalog.label(e.type)} does not fit the score")
     return Issue("score_conflict", msg + "; applied as entered", e.t_ms, e.id, "warning")
 
@@ -579,9 +592,6 @@ def _pre_issues(e: Event, info: _Info, states: set[State], match: dict[str, Any]
         if side and all(s.server == other(side) for s in states):
             out.append(Issue("server_out_of_turn", "Server differs from the expected rotation",
                              e.t_ms, e.id, "info"))
-    if t == catalog.TIEBREAK_START and not any(s.in_tiebreak for s in states):
-        out.append(Issue("unexpected_tiebreak", "Tiebreak start, but the score is not at a tiebreak",
-                         e.t_ms, e.id, "info"))
     if t == catalog.SCORE_STATE:
         for p in info.checkpoint.problems:
             out.append(Issue("invalid_score_state", f"Set score: {p}; ignored", e.t_ms, e.id))

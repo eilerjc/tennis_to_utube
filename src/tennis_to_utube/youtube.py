@@ -14,6 +14,7 @@ from typing import Any, Sequence
 from . import catalog, names, structure
 from .chapters import Chapter, chapter_for, derive_chapters, youtube_chapters
 from .config import Settings
+from .flow import analyze_match
 from .issues import Issue
 from .matchfile import Event, MatchFile
 from .trim import TrimPlan, remap_events
@@ -72,7 +73,7 @@ class Export:
 
 def build_export(mf: MatchFile, plan: TrimPlan, settings: Settings) -> Export:
     remapped, issues = remap_events(mf.events, plan)
-    derived = derive_chapters(mf.events, remapped, settings, plan.total_out_ms)
+    derived = derive_chapters(mf.events, remapped, settings, plan.total_out_ms, analyze_match(mf))
     chapters, ch_issues = youtube_chapters(derived, plan.total_out_ms)
     issues += ch_issues
     grouping = chapters or derived
