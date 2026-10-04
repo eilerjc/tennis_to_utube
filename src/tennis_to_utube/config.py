@@ -37,6 +37,8 @@ DEFAULTS: dict[str, Any] = {
     "trim": {
         # Removal rules proposed by default in the trim pass (see trim.RULES).
         "rules": ["warmup", "changeovers", "set_breaks", "after_match"],
+        # Tiebreak changeover cuts end this long before the serve mark that resumes play.
+        "serve_lead_in_ms": 3000,
     },
     "scoring": {
         # Format for new matches (scoring.PRESETS): best of 3, 10-point match tiebreak.

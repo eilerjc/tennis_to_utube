@@ -285,8 +285,8 @@ may say "won"/"lost"/"?" but all store the same type.
     comes from the score engine, so games ended by points count too (anchored on the
     game-ending point, or on its Game end if marked); uncertain game ends are not cut.
     **Tiebreak changeovers** (every 6 points, or Coman: after point 1 then every 4) are cut
-    from that point to the next serve mark; without a serve mark there is no sign of when
-    play resumes, so none is proposed.
+    from that point to `trim.serve_lead_in_ms` (default 3 s) before the next serve mark;
+    without a serve mark there is no sign of when play resumes, so none is proposed.
   - set breaks, everything after Match end.
 - Removals run exactly up to the next Game start / Set start mark; no extra pre-roll is kept
   before it. So **mark Game start where the kept footage should begin**: a lead-in before

@@ -146,8 +146,12 @@ def _next_serve(evs: Sequence[Event], i: int) -> Event | None:
     return None
 
 
+SERVE_LEAD_IN_MS = 3000
+
+
 def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = RULES,
-                 analysis: Analysis | None = None) -> list[Cut]:
+                 analysis: Analysis | None = None,
+                 serve_lead_in_ms: int = SERVE_LEAD_IN_MS) -> list[Cut]:
     """Cuts suggested by the chosen rules, sorted by start time.
 
     * warmup: from 0 to the first Match/Set/Game start or Set score.
@@ -155,8 +159,9 @@ def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = 
       ``analysis``, games ended by points count too (anchored on the game-ending point, or
       its Game end if marked); without one, Game end marks are counted (:mod:`structure`).
       Where the game count is unknown, none are proposed. Also (with ``analysis``) tiebreak
-      changeovers, from the point after which ends change to the next serve mark (none
-      without a serve mark: there is no other sign of when play resumes).
+      changeovers, from the point after which ends change to ``serve_lead_in_ms`` before
+      the next serve mark (none without a serve mark: there is no other sign of when play
+      resumes).
     * set_breaks: from Set end to the next Set or Game start.
     * after_match: from Match end to the end of the video.
     """
@@ -188,7 +193,7 @@ def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = 
             serve = _next_serve(evs, index[e.id])
             if serve is not None:
                 set_txt = f" (set {set_no})" if set_no else ""
-                add("changeovers", e, e.t_ms, serve.t_ms,
+                add("changeovers", e, e.t_ms, serve.t_ms - serve_lead_in_ms,
                     f"Tiebreak changeover after point {k}{set_txt}")
 
     for i, (e, pos) in enumerate(structure.walk(evs)):

@@ -14,10 +14,11 @@
   hold, Back/Forward/Up). Check it on `W:\video`, especially speed on the network drive.
 
 ## Open questions
-- Tiebreak changeovers are only cut when a serve is marked after the change of ends (no
-  other sign of when play resumes). OK, or another rule (e.g. a fixed length)?
+- None right now.
 
 ## Answered (2026-10-04)
+- Tiebreak changeovers need a serve mark (OK); the cut stops 3 s before the serve
+  (`trim.serve_lead_in_ms`).
 - The wheel works on Windows over the video and the timeline.
 - One-frame-late seeks don't matter. All assumptions below are approved.
 - Changeovers now also come from points (anchored on the point ending an odd game).

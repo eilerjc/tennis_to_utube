@@ -408,7 +408,14 @@ def test_tiebreak_changeovers_regular_and_coman():
     assert [c.key for c in tb] == ["changeovers:p6", "changeovers:p12"]
     assert tb[0].label == "Tiebreak changeover after point 6 (set 1)"
     p6 = next(e for e in events if e.id == "p6")
-    assert (tb[0].start_ms, tb[0].end_ms) == (p6.t_ms, p6.t_ms + 25_000)  # to the next serve
+    # to 3 s (the default lead-in) before the next serve
+    assert (tb[0].start_ms, tb[0].end_ms) == (p6.t_ms, p6.t_ms + 25_000 - 3_000)
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, fmt), serve_lead_in_ms=0)
+    assert [c.end_ms for c in cuts if c.key == "changeovers:p6"] == [p6.t_ms + 25_000]
+    # a lead-in longer than the break: no cut
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, fmt),
+                        serve_lead_in_ms=30_000)
+    assert not [c for c in cuts if c.label.startswith("Tiebreak")]
     coman = dataclasses.replace(fmt, tiebreak_changeovers="coman")
     cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, coman))
     # p13 would change ends too, but no serve is marked after it (end of the log)

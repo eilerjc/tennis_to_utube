@@ -20,7 +20,7 @@ from .scoring import (SHOT_TYPES, Analysis, other, point_server_side,  # noqa: F
                       shot_point_winner)
 from .shortcuts import ACTIONS_BY_ID
 from .timeline import Timeline
-from .trim import RULES, Cut, KeyframeLookup, TrimPlan, plan_from_dict, plan_trim, propose_cuts
+from .trim import RULES, SERVE_LEAD_IN_MS, Cut, KeyframeLookup, TrimPlan, plan_from_dict, plan_trim, propose_cuts
 
 MAX_UNDO = 500
 SHOT_MODIFIER_WINDOW_MS = 3000
@@ -127,7 +127,10 @@ class Session:
         unticked = set(self._trim_settings().get("unticked", []))
         return [dataclasses.replace(c, enabled=c.key not in unticked)
                 for c in propose_cuts(self.mf.events, self.total_ms, self.trim_rules(),
-                                      self.analysis)]
+                                      self.analysis, self._serve_lead_in_ms())]
+
+    def _serve_lead_in_ms(self) -> int:
+        return int(self.config.get("trim.serve_lead_in_ms")) if self.config else SERVE_LEAD_IN_MS
 
     def set_trim_rules(self, rules: list[str]) -> None:
         self._before_edit()
