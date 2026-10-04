@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QHBoxLayout, QInputDialog, QLabel, QMenu, QMessageBox, QPushButton,
-    QScrollArea, QSplitter, QVBoxLayout, QWidget,
+    QScrollArea, QSplitter, QStyle, QVBoxLayout, QWidget,
 )
 
 from .. import catalog, matchfile, names, playback, timeline_view
@@ -43,11 +43,23 @@ class TransportBar(QWidget):
         self.labels: dict[str, str] = {}
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        for action_id, text in (("skip_back", "◀ 5s"), ("skip_back_short", "◀ 1s"),
-                                ("frame_back", "◀ frame"), ("play_pause", "Play / Pause"),
-                                ("frame_forward", "frame ▶"), ("skip_forward_short", "1s ▶"),
-                                ("skip_forward", "5s ▶")):
+        # Direction is shown with the style's media icons (text arrows like ◀ render badly
+        # in some Windows fonts); forward buttons have the icon on the right.
+        sp = QStyle.StandardPixmap
+        for action_id, text, icon, forward in (
+                ("skip_back", "5 s", sp.SP_MediaSeekBackward, False),
+                ("skip_back_short", "1 s", sp.SP_MediaSeekBackward, False),
+                ("frame_back", "Frame", sp.SP_MediaSkipBackward, False),
+                ("play_pause", "Play / Pause", sp.SP_MediaPlay, False),
+                ("frame_forward", "Frame", sp.SP_MediaSkipForward, True),
+                ("skip_forward_short", "1 s", sp.SP_MediaSeekForward, True),
+                ("skip_forward", "5 s", sp.SP_MediaSeekForward, True)):
             b = _button(text)
+            b.setIcon(self.style().standardIcon(icon))
+            b.setIconSize(QSize(20, 20))
+            b.setMinimumWidth(96)
+            if forward:
+                b.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             self.buttons[action_id] = b
             self.labels[action_id] = text
             layout.addWidget(b)
