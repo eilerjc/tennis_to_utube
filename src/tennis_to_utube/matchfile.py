@@ -127,9 +127,10 @@ class Event:
         return {**{k: getattr(self, k) for k in _EVENT_FIELDS}, **self.extra}
 
 
-def default_match() -> dict[str, Any]:
+def default_match(format_preset: str = "standard_mtb") -> dict[str, Any]:
     return {
         "kind": "singles",
+        "format": {"preset": format_preset},  # scoring.PRESETS name plus any overrides
         "sides": {
             "A": {"players": [], "role": "ours"},
             "B": {"players": [], "role": "opponent"},

@@ -38,6 +38,12 @@ DEFAULTS: dict[str, Any] = {
         # Removal rules proposed by default in the trim pass (see trim.RULES).
         "rules": ["warmup", "changeovers", "set_breaks", "after_match"],
     },
+    "scoring": {
+        # Format for new matches (scoring.PRESETS): best of 3, 10-point match tiebreak.
+        "default_format": "standard_mtb",
+        # A Point pressed this soon after an ace/double fault is flagged as a possible duplicate.
+        "duplicate_point_window_ms": 5000,
+    },
     # Short player names on buttons: first N letters of the first name + last initial.
     "names": {"short_first_letters": 4},
     "playback": {
