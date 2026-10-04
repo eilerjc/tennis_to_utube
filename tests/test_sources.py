@@ -1,0 +1,65 @@
+from datetime import datetime, timezone
+from fractions import Fraction
+from pathlib import Path
+
+from tennis_to_utube.probe import AudioInfo, MediaInfo
+from tennis_to_utube.sources import (
+    GoProName, check_creation_order, check_join_compatible, group_by_recording, make_source,
+    order_files, parse_gopro_name,
+)
+
+
+def info(name, created=None, **over):
+    base = dict(path=Path(name), duration_ms=1000, codec="hevc", profile="Main", width=3840,
+                height=2160, fps="60000/1001", pix_fmt="yuvj420p", has_b_frames=2,
+                time_base=Fraction(1, 60000), start_ms=0, creation_time=created, size_bytes=1,
+                audio=AudioInfo("aac", 48000, 2))
+    base.update(over)
+    return MediaInfo(**base)
+
+
+def test_parse_gopro_name():
+    assert parse_gopro_name("GX010008.MP4") == GoProName("X", 1, 8)
+    assert parse_gopro_name("C:/videos/gx020123.mp4") == GoProName("X", 2, 123)
+    assert parse_gopro_name("GH031234.MP4") == GoProName("H", 3, 1234)
+    for name in ("GX01008.MP4", "GX010008.LRV", "video.mp4", "GX010008.MP4.bak"):
+        assert parse_gopro_name(name) is None
+
+
+def test_order_by_recording_then_chapter():
+    names = ["GX020008.MP4", "GX010009.MP4", "GX030008.MP4", "GX010008.MP4", "GX020007.MP4",
+             "GX010007.MP4", "clip10.mp4", "clip9.mp4"]
+    # Alphabetical would put GX010009 before GX020007; that is wrong.
+    assert [p.name for p in order_files(names)] == [
+        "GX010007.MP4", "GX020007.MP4", "GX010008.MP4", "GX020008.MP4", "GX030008.MP4",
+        "GX010009.MP4", "clip9.mp4", "clip10.mp4"]
+
+
+def test_group_by_recording():
+    groups = group_by_recording(["GX020008.MP4", "GX010009.MP4", "GX010008.MP4", "notes.mp4"])
+    assert {k: [p.name for p in v] for k, v in groups.items()} == {
+        8: ["GX010008.MP4", "GX020008.MP4"], 9: ["GX010009.MP4"], None: ["notes.mp4"]}
+    assert list(groups) == [8, 9, None]
+
+
+def test_creation_order_disagreement_flagged():
+    t = lambda m: datetime(2026, 5, 1, 16, m, tzinfo=timezone.utc)  # noqa: E731
+    ok = [info("GX010008.MP4", t(15)), info("GX020008.MP4", t(52)), info("GX030008.MP4", t(52))]
+    assert check_creation_order(ok) == []
+    bad = [info("GX010008.MP4", t(52)), info("GX020008.MP4", t(15)), info("GX030008.MP4", None)]
+    issues = check_creation_order(bad)
+    assert len(issues) == 1 and "GX020008.MP4" in issues[0].message
+
+
+def test_join_compatibility():
+    files = [info("a.MP4"), info("b.MP4"), info("c.MP4", width=1920, pix_fmt="yuv420p"),
+             info("d.MP4", audio=None)]
+    issues = check_join_compatible(files)
+    assert [i.message.split()[0] for i in issues] == ["c.MP4", "d.MP4"]
+    assert "width" in issues[0].message and "pix_fmt" in issues[0].message
+    assert all(i.severity == "error" for i in issues)
+
+
+def test_make_source(tmp_path):
+    src = make_source(info(str(tmp_path / "GX010008.MP4")), tmp_path / "GX010008.match.json")
+    assert src.path == "GX010008.MP4" and src.duration_ms == 1000 and src.fps == "60000/1001"
