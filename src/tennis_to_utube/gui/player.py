@@ -212,7 +212,12 @@ class MpvPlayer(PlayerBase):
 
     def position_ms(self) -> int:
         try:
-            return playback.position_ms(self.mpv.time_pos)
+            pos = self.mpv.time_pos
+            if pos is not None and self.mpv.eof_reached:
+                # parked on the last frame, some mpv versions (0.34) report the end of the
+                # file, not that frame's start
+                pos = min(pos, max(0.0, (self.duration_ms - self.frame) / 1000))
+            return playback.position_ms(pos)
         except Exception:  # mpv not created or nothing loaded yet
             return 0
 
