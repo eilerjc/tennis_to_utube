@@ -305,6 +305,26 @@ may say "won"/"lost"/"?" but all store the same type.
 
 ## 10. Playback and timeline UI
 
+**Window** (agreed): works on a 1920×1200 screen or larger (the owner's is 3840×2160; Qt
+scales). Steps along the top: **1 Files → 2 Mark → 3 Trim → 4 Export**. Mark layout:
+
+```
+┌──────────────────────────────────────────┬────────────────────┐
+│                                          │ score / server     │
+│               Video (mpv)                ├────────────────────┤
+│                                          │ event buttons      │
+├──────────────────────────────────────────┤ (key rows,         │
+│ transport · speed buttons · time         │  suggested lit)    │
+├──────────────────────────────────────────┴────────────────────┤
+│ overview bar (whole match)                                     │
+│ detail strip (zoomable)                                        │
+├────────────────────────────────────────────────────────────────┤
+│ [Events] [Issues] lists                                        │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Runs from source for now: `run.bat` sets up `.venv` on first use (one-click .exe later).
+
 **Playback** (all keys remappable)
 - Speeds 0.25×, 0.5×, 1×, 1.5×, 2× (maybe 4× for scanning); list is a setting; set with
   **buttons only** (no keys — agreed with the owner).
@@ -313,7 +333,7 @@ may say "won"/"lost"/"?" but all store the same type.
   only while paused** (does nothing while playing). (Back-stepping long-GOP HEVC is slower;
   verify feel on real footage.)
 - **Reaction offset:** marks are shifted earlier by a configurable real-time delay scaled by
-  playback speed. Marks can be nudged by single frames afterward.
+  playback speed (default **200 ms** at 1×, agreed). Marks can be nudged by single frames afterward.
 
 **Timeline**
 - **Overview bar** (whole match) + **zoomable detail strip** (seconds to minutes; scroll to

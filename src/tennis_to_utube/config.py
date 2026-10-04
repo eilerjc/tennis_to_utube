@@ -50,6 +50,9 @@ DEFAULTS: dict[str, Any] = {
         "speeds": [0.25, 0.5, 1.0, 1.5, 2.0],
         "skip_short_ms": 1000,
         "skip_long_ms": 5000,
+        # Marks are moved earlier by this much real time (scaled by playback speed) to make
+        # up for reaction time.
+        "reaction_offset_ms": 200,
     },
 }
 

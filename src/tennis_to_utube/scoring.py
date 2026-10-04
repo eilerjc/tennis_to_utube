@@ -53,6 +53,14 @@ PRESETS: dict[str, Format] = {
     "short_sets": Format(games=4, tiebreak_at=4),  # to 4, tiebreak at 4-4, match tiebreak
 }
 DEFAULT_PRESET = "standard_mtb"
+PRESET_LABELS = {
+    "standard_mtb": "Best of 3, match tiebreak (10) for the 3rd set",
+    "standard": "Best of 3 sets",
+    "best_of_5": "Best of 5 sets",
+    "pro_set": "Pro set (8 games)",
+    "pro10": "Pro set (10 games)",
+    "short_sets": "Short sets (to 4), match tiebreak (10)",
+}
 
 
 def patch_format(fmt: Format, patch: Mapping[str, Any]) -> tuple[Format, list[str]]:
