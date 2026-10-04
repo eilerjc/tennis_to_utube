@@ -266,6 +266,20 @@ class Session:
 
     # -- marking --------------------------------------------------------------------------
 
+    def game_start_server(self, t_ms: int, other_server: bool = False) -> tuple[str, str | None]:
+        """(side, player) a Game start at ``t_ms`` records: the predicted server, or the other
+        side's. The player is None in doubles when it cannot be predicted (team's choice)."""
+        flow = self.flow_at(t_ms)
+        match = self.mf.match
+        side, player = flow.next_server, flow.next_server_player
+        if side is None:
+            side, player = "A", None  # unknown: assume ours; Shift+G for the other side
+        if other_server:
+            side, player = other(side), None
+        if player is None and match.get("kind") != "doubles":
+            player = names.players(match, side)[0]
+        return side, player
+
     def mark(self, action_id: str, t_ms: int, **extra: Any) -> Event:
         """Log the event an action stands for at ``t_ms``, filling in who serves."""
         action = ACTIONS_BY_ID[action_id]
@@ -277,14 +291,7 @@ class Session:
         flow = self.flow_at(t_ms)
         match = self.mf.match
         if action.event_type == catalog.GAME_START:
-            side, player = flow.next_server, flow.next_server_player
-            if side is None:
-                side, player = "A", None  # unknown: assume ours; Shift+G for the other side
-            if action.variant == "other_server":
-                side = other(side)
-                player = None
-            if player is None and match.get("kind") != "doubles":
-                player = names.players(match, side)[0]
+            side, player = self.game_start_server(t_ms, action.variant == "other_server")
             fields.update(side=side, player=player)
         elif action.event_type in (catalog.SERVE_IN, catalog.FAULT, catalog.LET, catalog.ACE):
             side = point_server_side(flow.score)

@@ -207,3 +207,38 @@ def test_selected_event_gone_after_undo(window):
     page.actions["delete_event"].trigger()
     page.actions["nudge_forward"].trigger()
     assert messages == ["No event selected", "No event selected"] and page.selected_id is None
+
+
+def test_doubles_server_picker(window):
+    page = window.mark
+    page.session.set_match(kind="doubles")
+    page.session.mf.match["sides"]["A"]["players"] = ["Emma", "Ana"]
+    page.session.mf.match["sides"]["B"]["players"] = ["Sara", "Mia"]
+    asked = []
+
+    def pick(players):
+        asked.append(players)
+        page.player.seek(99_000)  # time passes while choosing
+        return players[1]
+
+    page.ask_server = pick
+    page.player.seek(80_000)
+    page.actions["game_start"].trigger()
+    e = page.session.event(page.selected_id)
+    assert asked == [["Emma", "Ana"]] and (e.side, e.player, e.t_ms) == ("A", "Ana", 80_000)
+    page.player.seek(81_000)
+    page.actions["game_end_a"].trigger()
+    page.player.seek(82_000)
+    page.ask_server = lambda players: None  # Esc: still marked, server left open
+    page.actions["game_start"].trigger()
+    e = page.session.event(page.selected_id)
+    assert (e.type, e.side, e.player) == ("game_start", "B", None)
+
+
+def test_singles_never_asks_for_server(window):
+    page = window.mark
+    page.ask_server = lambda players: pytest.fail("asked in singles")
+    page.player.seek(85_000)
+    page.actions["game_start_other_server"].trigger()
+    e = page.session.event(page.selected_id)
+    assert e.player in ("Player 1", "Player 2")

@@ -11,14 +11,15 @@
 
 ## Open questions
 - Wheel over the video on Windows (mpv's own window may swallow it) — works?
-- Is a one-frame-late seek ever visible (mpv's 5 ms seek rule, see step 2)?
-- Changeover cuts are anchored on **Game end** marks. If you only mark points (no Game
-  end), no changeovers are proposed. Follow-up: anchor on the point that ends an odd game
-  using the score engine. Worth doing?
-- Ending state match tiebreak is typed as `[10-8]` but stored as a 1–0 set (the 10–8 is not
-  kept). OK, or keep the tiebreak points?
-- Doubles: a side's first service game has no predicted player; set it by editing the Game
-  start (double-click in the Events list). Want a quick picker on `G` instead?
+- Tiebreak changeovers are only cut when a serve is marked after the change of ends (no
+  other sign of when play resumes). OK, or another rule (e.g. a fixed length)?
+
+## Answered (2026-10-04)
+- One-frame-late seeks don't matter. All assumptions below are approved.
+- Changeovers now also come from points (anchored on the point ending an odd game).
+- Tiebreak points are kept in set scores (`7-6(5)`, `[10-8]`).
+- Doubles: `G` pops a 1/2 server picker when the server can't be predicted.
+- Tiebreak changeovers added; regular (every 6) or Coman (1, then every 4) per match.
 
 ## Details by step
 

@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QHBoxLayout, QInputDialog, QLabel, QMessageBox, QPushButton,
+    QButtonGroup, QCheckBox, QHBoxLayout, QInputDialog, QLabel, QMenu, QMessageBox, QPushButton,
     QScrollArea, QSplitter, QVBoxLayout, QWidget,
 )
 
@@ -183,6 +184,8 @@ class MarkPage(QWidget):
             "note": self.mark_note,
             "rules_change": self.mark_rules_change,
             "ending_state": self.mark_ending_state,
+            "game_start": lambda: self.mark_game_start(other_server=False),
+            "game_start_other_server": lambda: self.mark_game_start(other_server=True),
         }
         for a in ACTIONS:
             if a.event_type is not None and a.id not in handlers:
@@ -307,16 +310,40 @@ class MarkPage(QWidget):
             except OSError as exc:
                 self.message.emit(f"Could not save {self.session.path.name}: {exc}")
 
-    def mark(self, action_id: str, **extra) -> None:
+    def mark_time(self) -> int:
+        return playback.mark_time(self.position(), not self.player.is_paused(), self.player.speed(),
+                                  int(self.config.get("playback.reaction_offset_ms")))
+
+    def mark(self, action_id: str, t: int | None = None, **extra) -> None:
         if self.session is None:
             return
-        t = playback.mark_time(self.position(), not self.player.is_paused(), self.player.speed(),
-                               int(self.config.get("playback.reaction_offset_ms")))
+        t = self.mark_time() if t is None else t
         e = self.session.mark(action_id, t, **extra)
         self.selected_id = e.id
         self._after_edit(f"{catalog.label(e.type)} at {playback.clock_text(t)}")
 
+    def mark_game_start(self, other_server: bool) -> None:
+        """Game start with the predicted server; in doubles, when the server cannot be
+        predicted, a quick picker (keys 1/2) — the time is taken at the key press."""
+        if self.session is None:
+            return
+        t = self.mark_time()
+        side, player = self.session.game_start_server(t, other_server)
+        if player is None:
+            player = self.ask_server(names.players(self.session.mf.match, side))
+        action = "game_start_other_server" if other_server else "game_start"
+        self.mark(action, t, side=side, player=player)
+
     # Dialog hooks (tests replace these)
+    def ask_server(self, players: list[str]) -> str | None:
+        """Pick the server from a small menu at the mouse (1/2 or arrows + Enter)."""
+        menu = QMenu(self)
+        menu.addSection("Who serves?")
+        for i, name in enumerate(players, start=1):
+            act = menu.addAction(f"&{i}  {name.replace('&', '&&')}")
+            act.setData(name)
+        chosen = menu.exec(QCursor.pos())
+        return chosen.data() if chosen is not None else None
     def ask_note(self) -> str | None:
         text, ok = QInputDialog.getText(self, "Note", "Note:")
         return text if ok and text.strip() else None
