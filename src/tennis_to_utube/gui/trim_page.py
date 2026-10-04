@@ -1,34 +1,36 @@
 """Step 3 — Trim: choose removal rules, untick cuts, make the video (DESIGN.md §9).
 
-Planning finds the exact keyframes with ffprobe; making the video runs ffmpeg (stream copy)
-with progress and Cancel, then checks the result with ffprobe. The produced video's plan is
-stored in the match file so the export can remap event times.
+The cuts come from the match and ``trim.toml`` (re-read whenever the step is shown).
+"Check exact cuts" finds the keyframes with ffprobe here; **Make video runs the Trim tool**
+(:mod:`tennis_to_utube.trimtool`) as its own process, showing its progress, with Cancel.
+The tool also writes the trimmed video's chapters and links; after uploading, its YouTube
+link is pasted here and the links are rewritten (the full recording's are on Export).
 """
 
 from __future__ import annotations
 
-import os
+import json
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, Signal
+from PySide6.QtGui import QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import (
-    QCheckBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QProgressBar,
-    QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+    QPlainTextEdit, QProgressBar, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QWidget,
 )
 
 from .. import playback
-from ..config import Config
+from ..config import Config, load_trim_config
+from ..issues import Issue
 from ..probe import ProbeKeyframes, Tools
 from ..session import Session
 from ..timeline import Interval, merge_intervals
-from ..trim import RULE_LABELS, RULES, TrimPlan, plan_to_dict, remap_events, run_trim
+from ..trim import RULE_LABELS, RULES, TrimPlan, remap_events
+from ..trimtool import command, default_output, export_paths
+from ..youtube import parse_video_id
 from .worker import Job
-
-
-def default_output(match_path: Path) -> Path:
-    stem = match_path.name.removesuffix(".match.json")
-    return match_path.with_name(f"{stem} trimmed.mp4")
 
 
 def _clock(ms: int) -> str:
@@ -45,7 +47,10 @@ class TrimPage(QWidget):
         self.config = config
         self.session: Session | None = None
         self.plan: TrimPlan | None = None
-        self.job: Job | None = None
+        self.job: Job | None = None  # "Check exact cuts" (in this process)
+        self.process: QProcess | None = None  # "Make video" / links (the Trim tool)
+        self._out_buffer = ""
+        self._result: dict | None = None
         self._cancel = threading.Event()
         self._filling = False
 
@@ -58,6 +63,9 @@ class TrimPage(QWidget):
             self.rules[rule] = box
             rules_row.addWidget(box)
         rules_row.addStretch(1)
+        self.config_note = QLabel()
+        self.config_note.setStyleSheet("color: #757575")
+        rules_row.addWidget(self.config_note)
 
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["Cut", "What", "From", "To", "Length"])
@@ -89,7 +97,7 @@ class TrimPage(QWidget):
         self.progress.setFormat("")
         self.plan_button.clicked.connect(lambda *_: self.start_plan())
         self.make_button.clicked.connect(lambda *_: self.start_make())
-        self.cancel_button.clicked.connect(lambda *_: self._cancel.set())
+        self.cancel_button.clicked.connect(lambda *_: self.cancel())
         buttons = QHBoxLayout()
         for b in (self.plan_button, self.make_button, self.cancel_button):
             buttons.addWidget(b)
@@ -99,6 +107,33 @@ class TrimPage(QWidget):
         self.result.setWordWrap(True)
         self.result.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
+        # The trimmed video on YouTube: its own id, chapters and links (from the Trim tool)
+        self.video = QLineEdit()
+        self.video.setPlaceholderText("After uploading the trimmed video: paste its YouTube link or id")
+        self.video.editingFinished.connect(self._video_entered)
+        self.video_note = QLabel()
+        self.chapters = QPlainTextEdit()
+        self.chapters.setReadOnly(True)
+        self.chapters.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.chapters.setMaximumHeight(160)
+        self.copy_button = QPushButton("Copy chapters")
+        self.copy_button.clicked.connect(lambda *_: self.copy_chapters())
+        self.files_note = QLabel()
+        self.files_note.setWordWrap(True)
+        self.files_note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        trimmed = QGroupBox("Trimmed video on YouTube")
+        t_layout = QVBoxLayout(trimmed)
+        vid_row = QHBoxLayout()
+        vid_row.addWidget(self.video, 1)
+        vid_row.addWidget(self.video_note)
+        t_layout.addLayout(vid_row)
+        ch_row = QHBoxLayout()
+        ch_row.addWidget(self.chapters, 1)
+        ch_row.addWidget(self.copy_button, 0, Qt.AlignmentFlag.AlignTop)
+        t_layout.addLayout(ch_row)
+        t_layout.addWidget(self.files_note)
+        self.trimmed_box = trimmed
+
         layout = QVBoxLayout(self)
         layout.addLayout(rules_row)
         layout.addWidget(QLabel("Untick a cut to keep that footage. Double-click a cut to see it."))
@@ -107,21 +142,26 @@ class TrimPage(QWidget):
         layout.addLayout(out_row)
         layout.addLayout(buttons)
         layout.addWidget(self.result)
+        layout.addWidget(trimmed)
 
     # -- data ----------------------------------------------------------------------
 
     def load(self, session: Session) -> None:
         self.session = session
         self.plan = None
-        out = session.output_path() or default_output(session.path)
+        session.trim_config = load_trim_config()
+        out = session.output_path() or default_output(session.path, session.trim_config)
         self.output.setText(str(out))
         self.result.setText("")
         self.refresh()
 
     def refresh(self) -> None:
-        """Rules, cuts and summary from the match (call when the page is shown)."""
+        """Rules, cuts and summary from the match and trim.toml (call when the page is shown)."""
         if self.session is None:
             return
+        self.session.trim_config = load_trim_config()  # edits to trim.toml apply right away
+        warnings = self.session.trim_config.warnings
+        self.config_note.setText("trim.toml: " + "; ".join(warnings) if warnings else "")
         self._filling = True
         chosen = set(self.session.trim_rules())
         for rule, box in self.rules.items():
@@ -141,6 +181,7 @@ class TrimPage(QWidget):
                 self.table.setItem(row, col, item)
         self._filling = False
         self._show_summary()
+        self._show_trimmed()
 
     def _show_summary(self) -> None:
         assert self.session is not None
@@ -159,6 +200,25 @@ class TrimPage(QWidget):
             if made != now:
                 text += "<br><span style='color:#ef6c00'>The cuts changed since the video was made.</span>"
         self.summary.setText(text)
+
+    def _show_trimmed(self) -> None:
+        """The trimmed video's YouTube id and chapters (enabled once a video was made)."""
+        assert self.session is not None
+        output = self.session.mf.output or {}
+        self.trimmed_box.setEnabled(bool(output))
+        self.video.setText(output.get("video_id") or "")
+        chapters_path, md_path, csv_path = export_paths(self.session.path)
+        try:
+            self.chapters.setPlainText(chapters_path.read_text(encoding="utf-8") if output else "")
+        except OSError:
+            self.chapters.setPlainText("")
+        if not output:
+            self.video_note.setText("make the video first")
+            self.files_note.setText("")
+            return
+        self.video_note.setText("" if output.get("video_id") else "links will have times only")
+        self.files_note.setText(f"Links: {md_path.name}, {csv_path.name} (next to the match file). "
+                                "The full recording's chapters and links are on the Export step.")
 
     def _rules_changed(self) -> None:
         if self._filling or self.session is None:
@@ -187,7 +247,7 @@ class TrimPage(QWidget):
         if path:
             self.output.setText(path)
 
-    # -- jobs ----------------------------------------------------------------------
+    # -- check exact cuts (in this process) --------------------------------------------
 
     def _tools(self) -> Tools:
         return Tools.from_config(self.config)
@@ -197,20 +257,17 @@ class TrimPage(QWidget):
         return ProbeKeyframes(self.session.source_paths(), self._tools(),
                               durations_ms=[s.duration_ms for s in self.session.mf.sources])
 
+    def busy(self) -> bool:
+        return ((self.job is not None and self.job.isRunning())
+                or (self.process is not None and self.process.state() != QProcess.ProcessState.NotRunning))
+
     def _busy(self, busy: bool) -> None:
         for w in (self.plan_button, self.make_button, self.choose, self.output, self.table,
-                  *self.rules.values()):
+                  self.trimmed_box, *self.rules.values()):
             w.setEnabled(not busy)
         self.cancel_button.setEnabled(busy)
-
-    def _run(self, fn, done) -> None:
-        self._cancel.clear()
-        self._busy(True)
-        self.job = Job(fn, self)
-        self.job.progressed.connect(self._on_progress)
-        self.job.succeeded.connect(lambda r: (self._busy(False), done(r)))
-        self.job.failed.connect(self._on_failed)
-        self.job.start()
+        if not busy and self.session is not None:
+            self.trimmed_box.setEnabled(bool(self.session.mf.output))
 
     def _on_progress(self, fraction: float, text: str) -> None:
         if fraction < 0:
@@ -220,15 +277,15 @@ class TrimPage(QWidget):
             self.progress.setValue(int(fraction * 1000))
         self.progress.setFormat(text)
 
-    def _on_failed(self, text: str) -> None:
+    def _stopped(self, text: str) -> None:
         self._busy(False)
         self.progress.setRange(0, 1000)
         self.progress.setValue(0)
         self.progress.setFormat("")
-        self.result.setText("Cancelled." if text == "cancelled" else f"<b>Failed:</b> {text}")
+        self.result.setText(text)
 
     def start_plan(self) -> None:
-        if self.session is None:
+        if self.session is None or self.busy():
             return
         session = self.session
 
@@ -237,59 +294,133 @@ class TrimPage(QWidget):
             return session.plan(self._keyframes())
 
         def done(plan: TrimPlan) -> None:
+            self._busy(False)
             self.plan = plan
             self.progress.setFormat("")
             _, issues = remap_events(session.mf.events, plan)
             self._show_summary()
             self._show_issues(issues)
 
-        self._run(work, done)
+        self._cancel.clear()
+        self._busy(True)
+        self.job = Job(work, self)
+        self.job.progressed.connect(self._on_progress)
+        self.job.succeeded.connect(done)
+        self.job.failed.connect(lambda text: self._stopped(
+            "Cancelled." if text == "cancelled" else f"<b>Failed:</b> {text}"))
+        self.job.start()
+
+    # -- the Trim tool (its own process) -------------------------------------------------
+
+    def _run_tool(self, args: list[str], on_done) -> None:
+        """Run the Trim tool on the saved match file; ``on_done(exit_code, result)``."""
+        assert self.session is not None
+        self.session.save()  # the tool reads the match file
+        argv, env = command(self.session.path, "--from-gui", *args)
+        proc = QProcess(self)
+        q_env = QProcessEnvironment()
+        for k, v in env.items():
+            q_env.insert(k, v)
+        proc.setProcessEnvironment(q_env)
+        proc.setProcessChannelMode(QProcess.ProcessChannelMode.SeparateChannels)
+        self._out_buffer, self._result = "", None
+        proc.readyReadStandardOutput.connect(lambda: self._read_tool(proc))
+        proc.finished.connect(lambda code, _status: self._tool_finished(proc, code, on_done))
+        proc.errorOccurred.connect(lambda err: err == QProcess.ProcessError.FailedToStart
+                                   and self._stopped("<b>Failed:</b> could not start the Trim tool"))
+        self.process = proc
+        self._busy(True)
+        proc.start(argv[0], argv[1:])
+
+    def _read_tool(self, proc: QProcess) -> None:
+        self._out_buffer += bytes(proc.readAllStandardOutput()).decode("utf-8", "replace")
+        *lines, self._out_buffer = self._out_buffer.split("\n")
+        for line in lines:
+            line = line.rstrip("\r")
+            if line.startswith("PROGRESS "):
+                _, fraction, *text = line.split(" ", 2)
+                self._on_progress(float(fraction), text[0] if text else "")
+            elif line.startswith("RESULT "):
+                self._result = json.loads(line[len("RESULT "):])
+
+    def _tool_finished(self, proc: QProcess, code: int, on_done) -> None:
+        self._read_tool(proc)
+        if self._out_buffer:
+            self._out_buffer += "\n"
+            self._read_tool(proc)
+        errors = bytes(proc.readAllStandardError()).decode("utf-8", "replace").strip()
+        self.process = None
+        if code == 2:
+            self._stopped("Cancelled.")
+        elif code != 0 or self._result is None:
+            self._stopped(f"<b>Failed:</b> {errors.splitlines()[-1] if errors else f'exit code {code}'}")
+        else:
+            self._busy(False)
+            on_done(self._result)
+        proc.deleteLater()
+
+    def cancel(self) -> None:
+        self._cancel.set()
+        if self.process is not None and self.process.state() != QProcess.ProcessState.NotRunning:
+            if self.process.state() == QProcess.ProcessState.Starting:
+                self.process.waitForStarted(5_000)
+            self.process.write(b"cancel\n")
 
     def start_make(self) -> None:
-        if self.session is None:
+        if self.session is None or self.busy():
             return
-        session = self.session
         output = Path(self.output.text().strip())
         if not output.name:
             self.result.setText("Choose a file name for the video.")
             return
-        paths = session.source_paths()
-        cancel = self._cancel
+        self._on_progress(-1, "Starting the Trim tool…")
+        self._run_tool(["-o", str(output)], self._made)
 
-        def work(report):
-            report(-1, "Finding keyframes…")
-            plan = session.plan(self._keyframes())
-            report(0.0, "Writing video…")
-            result = run_trim(plan, paths, output, self._tools(), cancel=cancel,
-                              progress=lambda f: report(f, f"Writing video… {f:.0%}"))
-            report(1.0, "Checked")
-            return result
+    def _made(self, result: dict) -> None:
+        assert self.session is not None
+        self.session.set_output(result["output"])
+        self.session.save()
+        self.plan = self.session.output_plan()
+        self.progress.setFormat("Done")
+        issues = [Issue(i["code"], i["message"], i.get("t_ms"), severity=i.get("severity", "warning"))
+                  for i in result.get("issues", [])]
+        self._show_summary()
+        self._show_issues(issues, made=Path(result["video"]))
+        self._show_trimmed()
+        self.changed.emit()
+        self.message.emit(f"Made {Path(result['video']).name}")
 
-        def done(result) -> None:
-            self.plan = result.plan
-            try:
-                stored = os.path.relpath(result.output, session.path.parent)
-            except ValueError:  # another drive (Windows)
-                stored = str(result.output)
-            session.set_output(plan_to_dict(result.plan, Path(stored).as_posix()))
-            session.save()
-            self._show_summary()
-            _, issues = remap_events(session.mf.events, result.plan)
-            self._show_issues(list(result.issues) + issues, made=result.output)
-            self.changed.emit()
-            self.message.emit(f"Made {result.output.name}")
+    def _video_entered(self) -> None:
+        if self.session is None or not self.session.mf.output or self.busy():
+            return
+        text = self.video.text().strip()
+        vid = parse_video_id(text) if text else None
+        if text and vid is None:
+            self.video_note.setText("<span style='color:#c62828'>not a YouTube link or id</span>")
+            return
+        if vid == self.session.mf.output.get("video_id"):
+            return
+        self.session.set_output_video_id(vid)
+        self.changed.emit()
+        self._run_tool(["--links-only"], lambda _r: (self._show_trimmed(),
+                                                       self.message.emit("Trimmed video's links rewritten")))
 
-        self._run(work, done)
+    def copy_chapters(self) -> None:
+        text = self.chapters.toPlainText()
+        if text:
+            QGuiApplication.clipboard().setText(text)
+            self.message.emit("Chapters copied")
 
     def _show_issues(self, issues, made: Path | None = None) -> None:
         lines = []
         if made is not None:
-            lines.append(f"<b>Made {made.name}</b> and checked it with ffprobe.")
+            lines.append(f"<b>Made {made.name}</b> and checked it with ffprobe; its chapters "
+                         "and links are below.")
         notable = [i for i in issues if i.severity != "info"]
         removed = [i for i in issues if i.code == "event_in_removed_region"]
         if removed:
             lines.append(f"{len(removed)} event(s) are inside removed footage and will not be "
-                         "exported (see Issues on the Mark step):")
+                         "in the trimmed video's links (see Issues on the Mark step):")
             lines += [f"&nbsp;&nbsp;{_clock(i.t_ms)} — {i.message}" for i in removed[:10]]
         for i in notable:
             if i.code != "event_in_removed_region":
@@ -302,3 +433,7 @@ class TrimPage(QWidget):
         if self.job is not None and self.job.isRunning():
             self._cancel.set()
             self.job.wait(10_000)
+        if self.process is not None and self.process.state() != QProcess.ProcessState.NotRunning:
+            self.process.write(b"cancel\n")
+            if not self.process.waitForFinished(10_000):
+                self.process.kill()

@@ -93,15 +93,21 @@ class Session:
             return None
 
     def export_plan(self) -> tuple[TrimPlan, str]:
-        """The timeline links refer to, and a note for the user."""
-        plan = self.output_plan()
-        if plan is not None:
-            name = Path((self.mf.output or {}).get("path") or "the video").name
-            return plan, f"Times refer to {name} (made on the Trim step)."
-        note = "No video made on the Trim step yet: times refer to the original recording"
+        """The full recording's timeline (the Export step), and a note for the user. The
+        trimmed video's chapters and links come from the Trim tool."""
+        note = "Times refer to the full recording"
         if len(self.mf.sources) > 1:
-            note += " joined in order (make a video on the Trim step to upload one file)"
-        return plan_trim(self.timeline(), [], None), note + "."
+            note += " (the files joined in order)"
+        note += ". The trimmed video's chapters and links are made on the Trim step."
+        return plan_trim(self.timeline(), [], None), note
+
+    def set_output_video_id(self, video_id: str | None) -> None:
+        """YouTube id of the trimmed video (kept in ``output``)."""
+        if not self.mf.output:
+            raise ValueError("no trimmed video has been made")
+        self._before_edit()
+        self.mf.output["video_id"] = video_id
+        self._after_edit()
 
     def set_video_id(self, video_id: str | None) -> None:
         self._before_edit()

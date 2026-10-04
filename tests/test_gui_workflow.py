@@ -71,10 +71,10 @@ def test_files_mark_trim_export(qapp, config_dir, tmp_path):
         trim = w.trim
         assert trim.table.rowCount() == 3  # warm-up, changeover after game 1 (game 3 is last), after match
         trim.start_make()
-        pump(qapp, lambda: trim.job is not None and trim.job.isFinished())
-        pump(qapp, lambda: "Made" in trim.result.text(), 5)
+        pump(qapp, lambda: not trim.busy() and "Made" in trim.result.text(), 120)
         out = w.mark.session.output_path()
         assert out.exists() and out.name == "GX010042 trimmed.mp4"
+        assert (folder / "GX010042 trimmed chapters.txt").exists()  # written by the Trim tool
 
         # 4 Export
         w.steps.setCurrentWidget(w.export)
@@ -85,7 +85,7 @@ def test_files_mark_trim_export(qapp, config_dir, tmp_path):
         text = md.read_text(encoding="utf-8")
         assert text.startswith("# GX010042\n\nEmma Smith vs Sara Jones\n")
         assert "?t=0) Match start" in text and "Game end — won by Sara Jones" in text
-        assert "trimmed.mp4" in export.note.text()
+        assert "full recording" in export.note.text()  # the trimmed video's are on Trim
 
         # everything was saved in the match file
         w.mark.save()

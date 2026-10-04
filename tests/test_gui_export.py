@@ -36,7 +36,7 @@ def test_chapters_and_links_without_video_id(window):
     page = window.export
     text = page.chapters.toPlainText()
     assert text.startswith("0:00 ") and "Set 1 · Game 2 (1–0) — Emma serving" in text
-    assert "original recording" in page.note.text()
+    assert "full recording" in page.note.text()
     assert "- 1:05 Point — won by Emma [close]" in page.links.toPlainText()  # 70 s - 5 s lead
     assert "times only" in page.video_note.text()
 
@@ -62,7 +62,7 @@ def test_copy_chapters(window):
     assert QGuiApplication.clipboard().text().startswith("0:00 ")
 
 
-def test_uses_the_made_video(window):
+def test_is_for_the_full_recording(window):
     from tennis_to_utube.trim import Cut, ListKeyframes, plan_to_dict, plan_trim
 
     s = window.mark.session
@@ -70,6 +70,6 @@ def test_uses_the_made_video(window):
                      ListKeyframes.regular([900_000], 1001))
     s.set_output(plan_to_dict(plan, "GX010001 trimmed.mp4"))
     window.export.refresh()
-    assert "GX010001 trimmed.mp4" in window.export.note.text()
-    # the cut snaps back to the keyframe at 28.028 s: 70 - 28.028 - 5 = 36.97 s
-    assert "- 0:36 Point" in window.export.links.toPlainText()
+    assert "full recording" in window.export.note.text()
+    # a trimmed video was made, but these links are for the full recording: 70 - 5 = 65 s
+    assert "- 1:05 Point" in window.export.links.toPlainText()

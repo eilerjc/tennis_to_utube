@@ -1,7 +1,7 @@
-"""Step 4 — Export: YouTube description chapters and per-event links (DESIGN.md §8).
+"""Step 4 — Export: YouTube chapters and per-event links for the full recording (DESIGN.md §8).
 
-Times come from the video made on the Trim step (its stored plan), else from the original
-recording. The video id is pasted after uploading; links then regenerate.
+The trimmed video gets its own chapters and links from the Trim tool (Trim step). The
+video id is pasted after uploading; links then regenerate.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class ExportPage(QWidget):
         self.export: Export | None = None
 
         self.video = QLineEdit()
-        self.video.setPlaceholderText("Paste the YouTube link or video id after uploading")
+        self.video.setPlaceholderText("Paste the full recording's YouTube link or video id after uploading")
         self.video.editingFinished.connect(self._video_entered)
         self.video_note = QLabel()
         id_row = QHBoxLayout()

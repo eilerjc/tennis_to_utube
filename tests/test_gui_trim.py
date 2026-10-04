@@ -12,10 +12,11 @@ pytestmark = [pytest.mark.gui, pytest.mark.ffmpeg]
 
 
 def wait_job(qapp, page, timeout=60):
+    """Until "Check exact cuts" or the Trim tool has finished."""
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         qapp.processEvents()
-        if page.job is not None and page.job.isFinished():
+        if not page.busy():
             for _ in range(20):
                 qapp.processEvents()
             return
@@ -80,13 +81,22 @@ def test_make_video_and_store_output(window, qapp):
     assert "Made" in page.result.text() and "inside removed footage" in page.result.text()
     plan = w.mark.session.output_plan()
     assert plan.remap(3_000) is not None and plan.remap(7_000) is None
+    # the Trim tool wrote the trimmed video's chapters/links; its YouTube id goes here
+    assert page.trimmed_box.isEnabled() and "links will have times only" in page.video_note.text()
+    page.video.setText("https://youtu.be/abcdefghijk")
+    page._video_entered()
+    wait_job(qapp, page, 60)
+    links = (w.mark.session.path.parent / "GX010001 trimmed links.md").read_text(encoding="utf-8")
+    assert "https://youtu.be/abcdefghijk?t=" in links
+    assert matchfile.load(w.mark.session.path).output["video_id"] == "abcdefghijk"
+    assert w.mark.session.mf.video_id is None  # the full recording's id is separate
 
 
 def test_cancel(window, qapp):
     w, _ = window
     page = w.trim
     page.start_make()
-    page._cancel.set()
+    page.cancel()
     wait_job(qapp, page, 120)
     assert page.result.text() == "Cancelled." and w.mark.session.mf.output is None
     assert not (w.mark.session.path.parent / "GX010001 trimmed.mp4").exists()

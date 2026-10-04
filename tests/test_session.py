@@ -146,11 +146,15 @@ def test_export_plan_and_video_id(tmp_path):
     s = session(tmp_path)
     s.mf.sources = [Source("a.MP4", 10_000), Source("b.MP4", 5_000)]
     plan, note = s.export_plan()
-    assert plan.is_identity and "original recording" in note and "joined" in note
+    assert plan.is_identity and "full recording" in note and "joined" in note
+    with pytest.raises(ValueError):
+        s.set_output_video_id("abcdefghijk")
     made = plan_trim(s.timeline(), [], None)
     s.set_output(plan_to_dict(made, "out.mp4"))
-    plan, note = s.export_plan()
-    assert "out.mp4" in note and plan.total_out_ms == 15_000
+    plan, _ = s.export_plan()
+    assert plan.is_identity  # Export is always the full recording
+    s.set_output_video_id("abcdefghijk")
+    assert s.mf.output["video_id"] == "abcdefghijk" and s.mf.video_id is None
     s.set_video_id("dQw4w9WgXcQ")
     assert s.mf.video_id == "dQw4w9WgXcQ"
     s.undo()
