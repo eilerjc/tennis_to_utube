@@ -73,3 +73,16 @@ Assumptions and open points to go through together. Newest at the bottom of each
   two names works. The whole change is one undo step.
 - Bug found and fixed while testing: undo did not restore player renames/format/trim choices
   (snapshots shared nested data). Fixed with deep copies + tests.
+
+## GUI step 6 — Trim
+- Rule ticks + a list of cuts ("remove" ticked by default); untick to keep footage;
+  double-click a cut to see it on the Mark step. Summary shows approximate result before
+  planning; "Check exact cuts" finds keyframes and shows the exact video length and events
+  that would be lost.
+- Default video name: `<first file> trimmed.mp4` next to the match file (editable / Choose…).
+- "Make video" runs ffmpeg in the background with a progress bar and Cancel (a cancelled
+  partial file is deleted), then checks it with ffprobe and lists any problems.
+- After making a video, its plan is stored in the match file (`output`) — export uses it, so
+  you can keep marking/editing events afterwards and the links still match the video. If the
+  cuts change after making the video, the Trim page says so.
+- Making a video with no cuts ticked just joins the files (useful for multi-file matches).

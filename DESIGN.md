@@ -120,6 +120,9 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
   Clashes lengthen the part that differs ("Alex Sm" / "Alex Sc"). Exports and the future
   scoreboard use **full names**.
 - Unknown top-level and per-event fields must round-trip unchanged.
+- `settings.trim` holds the trim pass choices (`rules`, `unticked` cut keys); top-level
+  `output` describes the last video made (`path`, kept `segments` [start, end, output start],
+  `output_start_ms`, the `cuts` used) so export can remap event times without re-planning.
 - A file with a newer `format_version` than the app knows is refused (never downgraded).
   Saving is atomic; the previous file is kept as `<name>.bak`.
 - Default when only one of `observed`/`called` is given: the other equals it.

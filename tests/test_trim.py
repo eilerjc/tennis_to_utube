@@ -317,3 +317,18 @@ def test_ffmpeg_command_is_stream_copy():
     assert cmd[-1] == "out.mp4"
     assert "-c:v" not in cmd and "libx265" not in joined
     assert "-tag:v" not in ffmpeg_command(Tools(), "l", "o", video_codec="h264")
+
+
+def test_plan_round_trip_for_export():
+    import dataclasses
+
+    from tennis_to_utube.trim import plan_from_dict, plan_to_dict
+
+    tl = Timeline((60_000, 30_000))
+    cuts = [cut(10_000, 20_000), Cut("x", "test", 70_000, 80_000, "x", enabled=False)]
+    plan = dataclasses.replace(plan_trim(tl, cuts, kfs(60_000, 30_000)), output_start_ms=39)
+    d = plan_to_dict(plan, "match.mp4")
+    assert d["path"] == "match.mp4" and d["cuts"] == ["test:10000"]
+    again = plan_from_dict(d, tl)
+    for t in (0, 9_000, 15_000, 25_000, 89_999):
+        assert again.remap(t) == plan.remap(t)

@@ -138,7 +138,8 @@ def default_match(format_preset: str = "standard_mtb") -> dict[str, Any]:
     }
 
 
-_TOP_FIELDS = ("format_version", "sources", "match", "settings", "events", "youtube", "next_event_seq")
+_TOP_FIELDS = ("format_version", "sources", "match", "settings", "events", "youtube",
+               "next_event_seq", "output")
 
 
 @dataclass
@@ -150,6 +151,9 @@ class MatchFile:
     youtube: dict[str, Any] = field(default_factory=lambda: {"video_id": None})
     # Sequence for new event ids, so ids are never reused even after deletions.
     next_event_seq: int = 1
+    # The last video made by the trim pass: path, kept segments, output start offset, cuts
+    # (trim.plan_to_dict). Export remaps event times with it.
+    output: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     # -- events -------------------------------------------------------------
@@ -203,9 +207,10 @@ class MatchFile:
         d = _migrate(d, version)
         known, extra = _split(d, _TOP_FIELDS)
         for name, typ in (("sources", list), ("events", list), ("match", dict),
-                          ("settings", dict), ("youtube", dict)):
+                          ("settings", dict), ("youtube", dict), ("output", (dict, type(None)))):
             if name in known and not isinstance(known[name], typ):
-                raise MatchFileError(f"'{name}' must be a {typ.__name__}")
+                kind = "list" if typ is list else "object"
+                raise MatchFileError(f"'{name}' must be a JSON {kind}")
         events = [Event.from_dict(e) for e in known.get("events", [])]
         ids = [e.id for e in events]
         if len(ids) != len(set(ids)):
@@ -217,6 +222,7 @@ class MatchFile:
             settings=known.get("settings", {}),
             events=events,
             youtube=known.get("youtube", {"video_id": None}),
+            output=known.get("output"),
             extra=extra,
         )
         seq = known.get("next_event_seq")
@@ -232,6 +238,7 @@ class MatchFile:
             "events": [e.to_dict() for e in self.events],
             "youtube": self.youtube,
             "next_event_seq": self.next_event_seq,
+            "output": self.output,
             **self.extra,
         }
 

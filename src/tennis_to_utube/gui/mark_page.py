@@ -288,6 +288,18 @@ class MarkPage(QWidget):
         self.message.emit(text)
         self._autosave.start()
 
+    def external_change(self, text: str = "") -> None:
+        """Another step changed the match through the shared session."""
+        self.refresh()
+        self.edited.emit()
+        self._autosave.start()
+        if text:
+            self.message.emit(text)
+
+    def show_time(self, t_ms: int) -> None:
+        self.player.set_paused(True)
+        self.player.seek(t_ms)
+
     def save(self) -> None:
         if self.session is not None and self.session.dirty:
             try:

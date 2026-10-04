@@ -13,6 +13,7 @@ from ..shortcuts import Shortcuts, default_shortcuts
 from .files_page import FilesPage
 from .mark_page import MarkPage
 from .player import create_player
+from .trim_page import TrimPage
 
 APP_TITLE = "Tennis to YouTube"
 
@@ -37,7 +38,7 @@ class MainWindow(QMainWindow):
 
         self.files = FilesPage(config, state)
         self.mark = MarkPage(config, shortcuts, player_factory)
-        self.trim: QWidget = Placeholder("Trimming comes after marking.")
+        self.trim = TrimPage(config)
         self.export: QWidget = Placeholder("Exporting comes after trimming.")
         self.steps = QTabWidget()
         self.steps.setDocumentMode(True)
@@ -49,6 +50,10 @@ class MainWindow(QMainWindow):
 
         self.files.matchReady.connect(self.open_match)
         self.mark.message.connect(lambda text: self.statusBar().showMessage(text, 5000))
+        self.trim.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
+        self.trim.changed.connect(self.mark.external_change)
+        self.trim.showTime.connect(self._show_time)
+        self.steps.currentChanged.connect(self._step_changed)
         warnings = config.warnings + shortcuts.warnings
         if warnings:
             self.statusBar().showMessage("  |  ".join(warnings), 30000)
@@ -68,9 +73,21 @@ class MainWindow(QMainWindow):
         self._set_match_steps_enabled(True)
         self.statusBar().showMessage(f"Opened {self.match_path}", 5000)
         self.mark.load_match(mf, self.match_path)
+        self.trim.load(self.mark.session)
         self.steps.setCurrentIndex(1)
+
+    def _step_changed(self, index: int) -> None:
+        page = self.steps.widget(index)
+        if page is self.trim and self.mark.session is not None:
+            self.trim.refresh()
+        self.mark.save()
+
+    def _show_time(self, t_ms: int) -> None:
+        self.steps.setCurrentWidget(self.mark)
+        self.mark.show_time(t_ms)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         self.files.shutdown()
+        self.trim.shutdown()
         self.mark.shutdown()
         super().closeEvent(event)

@@ -209,3 +209,20 @@ def test_open_gop_footage_is_refused(tmp_path):
     assert not plan.is_identity
     with pytest.raises(TrimError, match="open GOP"):
         run_trim(plan, [clip], tmp_path / "cut.mp4")
+
+
+def test_progress_and_cancel(tmp_path):
+    import threading
+
+    clip = make_clip(tmp_path / "GX010001.MP4", 600, data_track=False)
+    tl = Timeline((round(600 * FRAME_MS),))
+    plan = plan_trim(tl, [Cut("x", "test", 2_000, 4_000, "x")],
+                     ProbeKeyframes([clip], durations_ms=tl.durations_ms))
+    seen = []
+    result = run_trim(plan, [clip], tmp_path / "out.mp4", progress=seen.append)
+    assert seen and seen == sorted(seen) and seen[-1] > 0.9 and result.output.exists()
+    cancel = threading.Event()
+    cancel.set()
+    with pytest.raises(TrimError, match="cancelled"):
+        run_trim(plan, [clip], tmp_path / "cancelled.mp4", cancel=cancel)
+    assert not (tmp_path / "cancelled.mp4").exists()

@@ -19,7 +19,7 @@ from .matchfile import Event, MatchFile
 from .scoring import Analysis, ScoreView, other
 from .shortcuts import ACTIONS_BY_ID
 from .timeline import Timeline
-from .trim import RULES, Cut, propose_cuts
+from .trim import RULES, Cut, KeyframeLookup, TrimPlan, plan_from_dict, plan_trim, propose_cuts
 
 MAX_UNDO = 500
 
@@ -69,6 +69,37 @@ class Session:
     @property
     def total_ms(self) -> int:
         return Timeline.from_sources(self.mf.sources).total_ms if self.mf.sources else 0
+
+    def timeline(self) -> Timeline:
+        return Timeline.from_sources(self.mf.sources)
+
+    def source_paths(self) -> list[Path]:
+        return [matchfile.resolve_source_path(s.path, self.path) for s in self.mf.sources]
+
+    # -- trimming and the produced video ---------------------------------------------------
+
+    def plan(self, keyframes: KeyframeLookup | None) -> TrimPlan:
+        """Exact plan for the enabled cuts (``keyframes`` may be None without cuts)."""
+        cuts = self.cuts()
+        return plan_trim(self.timeline(), cuts, keyframes if any(c.enabled for c in cuts) else None)
+
+    def set_output(self, data: dict[str, Any] | None) -> None:
+        self._before_edit()
+        self.mf.output = data
+        self._after_edit()
+
+    def output_plan(self) -> TrimPlan | None:
+        """Plan of the video last made (for export), or None."""
+        if not self.mf.output or not self.mf.sources:
+            return None
+        try:
+            return plan_from_dict(self.mf.output, self.timeline())
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def output_path(self) -> Path | None:
+        path = (self.mf.output or {}).get("path")
+        return matchfile.resolve_source_path(path, self.path) if path else None
 
     # -- trim choices (stored in the match file's settings.trim) ----------------------
 

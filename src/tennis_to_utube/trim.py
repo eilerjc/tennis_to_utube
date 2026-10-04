@@ -23,16 +23,18 @@ import dataclasses
 import math
 import os
 import re
+import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
-from typing import Iterable, Protocol, Sequence
+from typing import Any, Callable, Iterable, Protocol, Sequence
 
 from . import catalog, structure
 from .issues import Issue
 from .matchfile import Event
-from .probe import Keyframe, MediaInfo, Tools, inspect_gop, probe, run
+from .probe import Keyframe, MediaInfo, ToolError, Tools, inspect_gop, no_window, probe
 from .timeline import Interval, Timeline, complement, merge_intervals
 
 RULES = ("warmup", "changeovers", "set_breaks", "after_match")
@@ -396,9 +398,44 @@ def _ffmpeg_issues(stderr: str) -> list[Issue]:
     return issues
 
 
+def _run_ffmpeg(cmd: list[str], total_ms: int, progress: Callable[[float], None] | None,
+                cancel: threading.Event | None) -> str:
+    """Run ffmpeg reporting progress (0..1) from ``-progress``; returns its stderr text."""
+    cmd = cmd[:-1] + ["-progress", "pipe:1", "-nostats", cmd[-1]]
+    with tempfile.TemporaryFile() as err:
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, **no_window())
+        except FileNotFoundError as exc:
+            raise ToolError(f"{cmd[0]} not found; install ffmpeg or set tools in config.toml") from exc
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            if cancel is not None and cancel.is_set():
+                proc.terminate()
+                proc.wait()
+                raise TrimError("cancelled")
+            line = raw.decode("utf-8", "replace").strip()
+            if progress and line.startswith("out_time_us=") and line[12:].isdigit() and total_ms:
+                progress(min(1.0, int(line[12:]) / 1000 / total_ms))
+        proc.wait()
+        err.seek(0)
+        text = err.read().decode("utf-8", "replace")
+    if cancel is not None and cancel.is_set():
+        raise TrimError("cancelled")
+    if proc.returncode != 0:
+        tail = "\n".join(text.strip().splitlines()[-10:])
+        raise ToolError(f"ffmpeg failed ({proc.returncode}): {tail}")
+    return text
+
+
 def run_trim(plan: TrimPlan, paths: Sequence[str | os.PathLike[str]], output: str | os.PathLike[str],
-             tools: Tools = Tools(), *, allow_open_gop: bool = False) -> TrimResult:
-    """Write the trimmed/joined file with ffmpeg, then verify it with ffprobe."""
+             tools: Tools = Tools(), *, allow_open_gop: bool = False,
+             progress: Callable[[float], None] | None = None,
+             cancel: threading.Event | None = None) -> TrimResult:
+    """Write the trimmed/joined file with ffmpeg, then verify it with ffprobe.
+
+    ``progress`` receives 0..1 while ffmpeg runs; setting ``cancel`` stops it (the partial
+    output is deleted and TrimError("cancelled") is raised).
+    """
     output = Path(output)
     sources = [Path(p).resolve() for p in paths]
     if output.resolve() in sources:
@@ -416,11 +453,15 @@ def run_trim(plan: TrimPlan, paths: Sequence[str | os.PathLike[str]], output: st
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(concat_script(plan, paths))
     try:
-        proc = run(ffmpeg_command(tools, list_path, output, first.codec))
+        stderr = _run_ffmpeg(ffmpeg_command(tools, list_path, output, first.codec),
+                             plan.total_out_ms, progress, cancel)
+    except TrimError:
+        output.unlink(missing_ok=True)
+        raise
     finally:
         os.unlink(list_path)
 
-    issues = _ffmpeg_issues(proc.stderr.decode("utf-8", "replace"))
+    issues = _ffmpeg_issues(stderr)
     info = probe(output, tools)
     expected = plan.total_out_ms
     frame_ms = 1000 / float(Fraction(first.fps)) if first.fps not in ("0/0", "") else 40.0
@@ -434,3 +475,22 @@ def run_trim(plan: TrimPlan, paths: Sequence[str | os.PathLike[str]], output: st
         issues.append(Issue("unexpected_streams", f"output has extra streams: {extra_streams}"))
     plan = dataclasses.replace(plan, output_start_ms=info.start_ms)
     return TrimResult(output, plan, info, tuple(issues))
+
+
+# -- what a produced video contains (stored in the match file for export) ---------------
+
+
+def plan_to_dict(plan: TrimPlan, output: str | None = None) -> dict[str, Any]:
+    """The parts of a plan the export needs: kept segments and the output's start offset."""
+    return {
+        "path": output,
+        "segments": [[s.start_ms, s.end_ms, s.out_start_ms] for s in plan.segments],
+        "output_start_ms": plan.output_start_ms,
+        "cuts": sorted(c.key for c in plan.cuts if c.enabled),
+    }
+
+
+def plan_from_dict(d: dict[str, Any], timeline: Timeline) -> TrimPlan:
+    """Rebuild a plan for remapping event times (no pieces: it is not for cutting again)."""
+    segments = tuple(Segment(int(a), int(b), int(c)) for a, b, c in d["segments"])
+    return TrimPlan(timeline, (), segments, (), int(d.get("output_start_ms", 0)))
