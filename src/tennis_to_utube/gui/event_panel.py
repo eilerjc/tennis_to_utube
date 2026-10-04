@@ -213,18 +213,22 @@ class RulesDialog(_Form):
         for key, label in PRESET_LABELS.items():
             self.preset.addItem(label, key)
         self.no_ad = QCheckBox("No-ad")
+        self.coman = QCheckBox("Coman tiebreak (change ends after point 1, then every 4)")
         self.match_tiebreak = QCheckBox("Deciding set is a 10-point match tiebreak")
         current = current or {}
         if current.get("preset") in PRESET_LABELS:
             self.preset.setCurrentIndex(list(PRESET_LABELS).index(current["preset"]))
         self.no_ad.setChecked(current.get("ad") is False)
+        self.coman.setChecked(current.get("tiebreak_changeovers") == "coman")
         self.form.addRow("Format", self.preset)
         self.form.addRow("", self.no_ad)
+        self.form.addRow("", self.coman)
         self.form.addRow("", self.match_tiebreak)
         self.finish_layout()
 
     def details(self) -> dict[str, Any]:
-        fmt: dict[str, Any] = {"preset": self.preset.currentData(), "ad": not self.no_ad.isChecked()}
+        fmt: dict[str, Any] = {"preset": self.preset.currentData(), "ad": not self.no_ad.isChecked(),
+                               "tiebreak_changeovers": "coman" if self.coman.isChecked() else "regular"}
         if self.match_tiebreak.isChecked():
             fmt["final_set"] = "match_tiebreak"
         return {"format": fmt}

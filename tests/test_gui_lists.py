@@ -112,3 +112,14 @@ def test_match_dialog_refuses_duplicates(qapp):
                                                    "B": {"players": ["Sara"]}}})
     d.edits["B"][0].setText("Emma")
     assert d.validate()
+
+
+def test_match_dialog_coman(qapp):
+    from tennis_to_utube.gui.lists import MatchDialog
+
+    d = MatchDialog({"kind": "doubles", "format": {"preset": "standard", "tiebreak_changeovers": "coman"},
+                     "sides": {"A": {"players": ["Emma", "Ana"]}, "B": {"players": ["Sara", "Mia"]}}})
+    assert d.coman.isChecked()
+    assert d.format_spec() == {"preset": "standard", "tiebreak_changeovers": "coman"}
+    d.coman.setChecked(False)
+    assert d.format_spec() == {"preset": "standard"}

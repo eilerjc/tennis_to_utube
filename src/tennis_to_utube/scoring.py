@@ -43,6 +43,16 @@ class Format:
     ad: bool = True  # False: no-ad, deciding point at deuce
     final_set: str = "match_tiebreak"  # "set" | "match_tiebreak" (in place of the final set)
     match_tiebreak_points: int = 10
+    # Ends are changed in tiebreaks after every 6 points ("regular"), or after the first
+    # point and then every 4 ("coman", used in doubles).
+    tiebreak_changeovers: str = "regular"
+
+
+def tiebreak_changeover_after(points_played: int, kind: str) -> bool:
+    """True if players change ends after this many tiebreak points."""
+    if kind == "coman":
+        return points_played == 1 or (points_played >= 5 and (points_played - 1) % 4 == 0)
+    return points_played > 0 and points_played % 6 == 0
 
 
 PRESETS: dict[str, Format] = {
@@ -90,6 +100,7 @@ def patch_format(fmt: Format, patch: Mapping[str, Any]) -> tuple[Format, list[st
             "ad": isinstance(value, bool),
             "final_set": value in ("set", "match_tiebreak"),
             "match_tiebreak_points": _pos_int(value),
+            "tiebreak_changeovers": value in ("regular", "coman"),
         }[key]
         if ok:
             changes[key] = value

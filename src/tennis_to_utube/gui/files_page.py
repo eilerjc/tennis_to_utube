@@ -151,9 +151,12 @@ class FilesPage(QWidget):
         if default in PRESET_LABELS:
             self.format.setCurrentIndex(list(PRESET_LABELS).index(default))
         self.no_ad = QCheckBox("No-ad")
+        self.coman = QCheckBox("Coman tiebreak")
+        self.coman.setToolTip("Change ends after the 1st tiebreak point, then every 4 (instead of every 6)")
         fmt_row = QHBoxLayout()
         fmt_row.addWidget(self.format, 1)
         fmt_row.addWidget(self.no_ad)
+        fmt_row.addWidget(self.coman)
         setup = QGroupBox("New match")
         form = QFormLayout(setup)
         form.addRow("Match", kind)
@@ -386,6 +389,8 @@ class FilesPage(QWidget):
         fmt = {"preset": self.format.currentData()}
         if self.no_ad.isChecked():
             fmt["ad"] = False
+        if self.coman.isChecked():
+            fmt["tiebreak_changeovers"] = "coman"
         mf = sources.new_match_file(
             infos, path, kind="doubles" if doubles else "singles",
             side_a=[e.text() for e in self.names["A"][:count]],

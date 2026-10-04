@@ -380,3 +380,52 @@ def test_uncertain_game_end_is_not_cut():
     events += [ev(t, "point", result="A") for t in (2_000, 3_000, 4_000)]
     events += [ev(5_000, "point", result="unknown"), ev(60_000, "game_start")]
     assert propose_cuts(events, 100_000, ["changeovers"], _score(events)) == []
+
+
+def _tiebreak_events(coman=False):
+    """6-6 by game-level marks, then a tiebreak with a serve mark before every point."""
+    events, t = [], 0
+    for _ in range(6):
+        for r in "AB":
+            events.append(ev(t, "game_end", result=r))
+            t += 1_000
+    events.append(ev(t, "game_start", side="A"))
+    for k in range(13):  # 13 points alternating A/B: 7-6, the tiebreak is still going
+        t += 30_000
+        events.append(ev(t, "serve_in"))
+        events.append(ev(t + 5_000, "point", result="AB"[k % 2], id=f"p{k + 1}"))
+    return events
+
+
+def test_tiebreak_changeovers_regular_and_coman():
+    from tennis_to_utube.scoring import PRESETS, analyze
+    import dataclasses
+
+    events = _tiebreak_events()
+    fmt = PRESETS["standard"]
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, fmt))
+    tb = [c for c in cuts if c.label.startswith("Tiebreak")]
+    assert [c.key for c in tb] == ["changeovers:p6", "changeovers:p12"]
+    assert tb[0].label == "Tiebreak changeover after point 6 (set 1)"
+    p6 = next(e for e in events if e.id == "p6")
+    assert (tb[0].start_ms, tb[0].end_ms) == (p6.t_ms, p6.t_ms + 25_000)  # to the next serve
+    coman = dataclasses.replace(fmt, tiebreak_changeovers="coman")
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, coman))
+    # p13 would change ends too, but no serve is marked after it (end of the log)
+    assert [c.key for c in cuts if c.label.startswith("Tiebreak")] == [
+        "changeovers:p1", "changeovers:p5", "changeovers:p9"]
+
+
+def test_tiebreak_changeover_needs_a_serve_mark():
+    from tennis_to_utube.scoring import PRESETS, analyze
+
+    events = [e for e in _tiebreak_events() if e.type != "serve_in"]
+    cuts = propose_cuts(events, 2_000_000, ["changeovers"], analyze(events, PRESETS["standard"]))
+    assert not [c for c in cuts if c.label.startswith("Tiebreak")]
+
+
+def test_tiebreak_changeover_rule():
+    from tennis_to_utube.scoring import tiebreak_changeover_after
+
+    assert [k for k in range(1, 20) if tiebreak_changeover_after(k, "regular")] == [6, 12, 18]
+    assert [k for k in range(1, 20) if tiebreak_changeover_after(k, "coman")] == [1, 5, 9, 13, 17]

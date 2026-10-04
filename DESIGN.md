@@ -211,7 +211,9 @@ may say "won"/"lost"/"?" but all store the same type.
   | `pro10` | 1 | 10 | at 10–10 | — |
   | `short_sets` | best of 3 | 4 | at 4–4 | 10-point match tiebreak |
 
-  **Ad / no-ad** is a switch on every format (`"ad": false`). Every field (`games`,
+  **Ad / no-ad** is a switch on every format (`"ad": false`). **Tiebreak changeovers**:
+  `"tiebreak_changeovers": "regular"` (default; change ends every 6 points) or `"coman"`
+  (after the 1st point, then every 4) — chosen per match, agreed with the owner. Every field (`games`,
   `tiebreak_at`, `tiebreak_points`, `final_set`, `match_tiebreak_points`, …) can be
   overridden, e.g. for other short-set variants — or the user just marks set won/lost.
 - **Points ended by a serve** (agreed with the owner): the second `fault` in a point is a
@@ -276,6 +278,9 @@ may say "won"/"lost"/"?" but all store the same type.
   - **changeovers**: from the end of an odd game of the set to the next Game start. The end
     comes from the score engine, so games ended by points count too (anchored on the
     game-ending point, or on its Game end if marked); uncertain game ends are not cut.
+    **Tiebreak changeovers** (every 6 points, or Coman: after point 1 then every 4) are cut
+    from that point to the next serve mark; without a serve mark there is no sign of when
+    play resumes, so none is proposed.
   - set breaks, everything after Match end.
 - Removals run exactly up to the next Game start / Set start mark; no extra pre-roll is kept
   before it. So **mark Game start where the kept footage should begin**: a lead-in before

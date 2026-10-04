@@ -296,8 +296,11 @@ class MatchDialog(_Dialog):
             self.preset.setCurrentIndex(list(PRESET_LABELS).index(fmt["preset"]))
         self.no_ad = QCheckBox("No-ad")
         self.no_ad.setChecked(fmt.get("ad") is False)
+        self.coman = QCheckBox("Coman tiebreak (change ends after point 1, then every 4)")
+        self.coman.setChecked(fmt.get("tiebreak_changeovers") == "coman")
         self.form.addRow("Format", self.preset)
         self.form.addRow("", self.no_ad)
+        self.form.addRow("", self.coman)
         self.form.addRow(QLabel("Renaming replaces the name everywhere in the match file."))
         self.finish()
 
@@ -314,4 +317,6 @@ class MatchDialog(_Dialog):
         spec: dict[str, Any] = {"preset": self.preset.currentData()}
         if self.no_ad.isChecked():
             spec["ad"] = False
+        if self.coman.isChecked():
+            spec["tiebreak_changeovers"] = "coman"
         return spec

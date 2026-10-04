@@ -113,6 +113,39 @@ def score_game_ends(analysis: Analysis) -> list[tuple[Event, int, int | None]]:
     return out
 
 
+SERVE_TYPES = frozenset({catalog.SERVE_IN, catalog.FAULT, catalog.LET, catalog.ACE})
+
+
+def score_tiebreak_changeovers(analysis: Analysis) -> list[tuple[Event, int, int | None]]:
+    """Tiebreak points after which players change ends: (point event, points played, set).
+
+    Every 6 points, or after the 1st and then every 4 with Coman tiebreaks (the format's
+    ``tiebreak_changeovers``). The point that ends the tiebreak is not one (the set ends).
+    """
+    from .scoring import tiebreak_changeover_after
+
+    out = []
+    prev = analysis.initial
+    for st in analysis.steps:
+        v = st.view
+        if (prev.in_tiebreak and v.in_tiebreak and prev.points is not None and v.points is not None
+                and sum(v.points) == sum(prev.points) + 1
+                and tiebreak_changeover_after(sum(v.points), v.fmt.tiebreak_changeovers)):
+            out.append((st.event, sum(v.points), len(v.sets) + 1 if v.sets is not None else None))
+        prev = v
+    return out
+
+
+def _next_serve(evs: Sequence[Event], i: int) -> Event | None:
+    """The next serve mark, if one comes before the next point ends."""
+    for e in evs[i + 1:]:
+        if e.type in SERVE_TYPES:
+            return e
+        if e.type in (catalog.POINT, catalog.GAME_END, catalog.SET_END, catalog.GAME_START):
+            return None
+    return None
+
+
 def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = RULES,
                  analysis: Analysis | None = None) -> list[Cut]:
     """Cuts suggested by the chosen rules, sorted by start time.
@@ -121,7 +154,9 @@ def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = 
     * changeovers: from the end of an odd game of a set to the next Game start. With a score
       ``analysis``, games ended by points count too (anchored on the game-ending point, or
       its Game end if marked); without one, Game end marks are counted (:mod:`structure`).
-      Where the game count is unknown, none are proposed.
+      Where the game count is unknown, none are proposed. Also (with ``analysis``) tiebreak
+      changeovers, from the point after which ends change to the next serve mark (none
+      without a serve mark: there is no other sign of when play resumes).
     * set_breaks: from Set end to the next Set or Game start.
     * after_match: from Match end to the end of the video.
     """
@@ -149,6 +184,12 @@ def propose_cuts(events: Iterable[Event], total_ms: int, rules: Iterable[str] = 
             if count % 2 == 1 and nxt is not None:
                 set_txt = f" (set {set_no})" if set_no else ""
                 add("changeovers", e, e.t_ms, nxt.t_ms, f"Changeover after game {count}{set_txt}")
+        for e, k, set_no in score_tiebreak_changeovers(analysis):
+            serve = _next_serve(evs, index[e.id])
+            if serve is not None:
+                set_txt = f" (set {set_no})" if set_no else ""
+                add("changeovers", e, e.t_ms, serve.t_ms,
+                    f"Tiebreak changeover after point {k}{set_txt}")
 
     for i, (e, pos) in enumerate(structure.walk(evs)):
         set_txt = f" (set {pos.set_no})" if pos.set_no else ""
