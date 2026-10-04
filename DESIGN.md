@@ -50,6 +50,23 @@ GX030008.MP4   2,161,484,725 bytes   (modified 17:36)
 - Core logic (event log, flow, scoring, chapters, trim planning) is pure Python with no GUI
   dependency so it can be fully unit-tested on Linux CI/cloud.
 
+**Separate tools, one repo** (agreed with the owner). They share the core code; the match
+file is the only thing passed between them, and each tool has its own config file in the
+user config dir:
+
+| Tool | Start | Config | Does |
+|---|---|---|---|
+| Marker (GUI) | `run.bat` | `config.toml` (playback, keys, names, scoring, full-video links) | Files → Mark → Trim → Export |
+| Trim tool | `trim.bat` / `python -m tennis_to_utube.trimtool` | `trim.toml` (what is cut, serve lead-in, the trimmed video's link lead-ins and chapter gap, output name) | makes the trimmed video; writes the trimmed video's chapters and links |
+| Stats | `stats.bat` / `python -m tennis_to_utube.stats` | — | CSV statistics (§12a) |
+| Overlay (future) | `overlay.bat` | `overlay.toml` | burned-in scoreboard (re-encode) |
+
+The Marker's **Trim** screen stays: it lists the cuts (rules and lead-ins from `trim.toml`,
+per-match choices in the match file), lets the user untick them and **runs the Trim tool**
+as a separate process to make the video (progress, Cancel). The Mark timeline keeps showing
+the cuts. The **Export** screen is for the **full recording** (its own YouTube video id);
+the trimmed video gets its own chapters and links from the Trim tool (its own video id).
+
 ## 3. Core principles
 
 1. **Every event is an instant.** No span events are stored. Intervals (a game, a changeover)
@@ -275,6 +292,9 @@ may say "won"/"lost"/"?" but all store the same type.
 - **Gap rule:** if more than **10 minutes** pass with no anchor, add a chapter at the **first
   existing event at or after** the 10-minute point; if no event exists there, add nothing.
   Never at an arbitrary time.
+- Two sets of chapters and links: the **full recording** (Export screen, `config.toml`
+  lead-ins, `youtube.video_id`) and the **trimmed video** (Trim tool, `trim.toml` lead-ins,
+  `output.video_id`). A match-file `settings.lead_in_ms` override applies to both.
 - Chapters are computed **after** trim remapping. YouTube chapter rules (as understood —
   verify): first timestamp `0:00`, at least 3 chapters, each ≥ 10 s long. Violations are
   merged/dropped.
@@ -286,7 +306,16 @@ may say "won"/"lost"/"?" but all store the same type.
 - Video ID is pasted after upload; links regenerate from stored offsets.
 - Upload is done by the user in the browser for now (YouTube API upload is future work).
 
-## 9. Trim pass (after marking)
+## 9. Trim pass (after marking) — the Trim tool
+
+The Trim tool (§2) does everything in this section. Its `trim.toml` holds the default rules,
+`serve_lead_in_ms`, and `lead_in_ms` / `chapter_gap_ms` for the trimmed video's links; the
+match file holds per-match choices (`settings.trim`: rules, unticked cuts) and the made
+video (`output`: plan, path, the trimmed video's YouTube id). Outputs next to the match
+file: `<match> trimmed.mp4`, `<match> trimmed chapters.txt`, `<match> trimmed links.md`
+and `.csv`. `--links-only` rewrites chapters and links for the made video (after pasting
+its YouTube id). Run from the GUI it reports progress on stdout and stops on "cancel" on
+stdin (the partial video is deleted).
 
 - User picks removal rules; app lists the resulting cuts; user can untick any:
   - everything before the first Game start / Match start (warmup),
@@ -294,7 +323,7 @@ may say "won"/"lost"/"?" but all store the same type.
     comes from the score engine, so games ended by points count too (anchored on the
     game-ending point, or on its Game end if marked); uncertain game ends are not cut.
     **Tiebreak changeovers** (every 6 points, or Coman: after point 1 then every 4) are cut
-    from that point to `trim.serve_lead_in_ms` (default 3 s) before the next serve mark;
+    from that point to `serve_lead_in_ms` (trim.toml, default 3 s) before the next serve mark;
     without a serve mark there is no sign of when play resumes, so none is proposed.
   - set breaks, everything after Match end.
 - Removals run exactly up to the next Game start / Set start mark; no extra pre-roll is kept
