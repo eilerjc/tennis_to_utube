@@ -145,7 +145,8 @@ may say "won"/"lost"/"?" but all store the same type.
 - Serve in `serve_in`, fault `fault`, let `let`, ace `ace`. First vs second serve is
   derived (a fault earlier in the same point), so one `serve_in` covers both; a double fault
   is two faults in the same point (no separate type). A logged serve gives the exact point
-  start time. *(Open: does the second fault / an ace end the point by itself? See §7.)*
+  start time. The second fault and an ace **end the point by themselves** (see §7); no Point
+  press is needed after them.
 
 **Shot** (optional finer level) [data only for v1 UI]
 - Winner `winner`, forced error `forced_error`, unforced error `unforced_error` — point-ending
@@ -183,6 +184,14 @@ may say "won"/"lost"/"?" but all store the same type.
 - **Formats:** ad / no-ad; standard sets with tiebreak at 6-6; pro set (to 8); short sets
   (e.g. to 4); 10-point match tiebreak in place of a final set. Changed mid-match via
   Rules-change events.
+- **Points ended by a serve** (agreed with the owner): the second `fault` in a point is a
+  double fault and wins the point for the receiver; an `ace` wins it for the server. The
+  engine awards the point itself (no Point event needed; the GUI shows it awarded at once).
+  If the server is unknown, the point counts as won by unknown. A Point press within a
+  short window after such a point (setting, default ~5 s) with no serve in between is not
+  merged silently: it is an issue, "possible duplicate point", for the user to keep or delete.
+  Points are delimited by point-ending events (Point, second fault, ace); a `let` is not a
+  fault. Logging serves stays optional — without them, Point is pressed as usual.
 - **Server tracking:** singles and **doubles from the start**. App predicts next server
   (including tiebreak rotation and fixed doubles partner order per set); user confirms with
   one press.
