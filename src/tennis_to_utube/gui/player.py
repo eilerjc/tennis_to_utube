@@ -75,7 +75,7 @@ class PlayerBase(QWidget):
         if self.is_paused():
             steps = event.angleDelta().y() // 120
             if steps:
-                self.step(-steps)  # wheel up = back, like scrolling up a list
+                self.step(steps)  # wheel forward (up) = next frame (owner's choice)
             event.accept()
         else:
             event.ignore()
@@ -146,7 +146,7 @@ class NullPlayer(PlayerBase):
     def step(self, frames: int) -> None:
         self.set_paused(True)
         # land inside the neighbouring frame, as mpv does
-        start = self._base_ms // self.frame * self.frame
+        start = math.floor(self._base_ms / self.frame + 1e-6) * self.frame  # 10010/16.68 = 599.99…
         self.seek(max(0, math.ceil(start + frames * self.frame)))
 
 

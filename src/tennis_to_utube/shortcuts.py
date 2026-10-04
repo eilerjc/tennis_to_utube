@@ -98,6 +98,7 @@ ACTIONS: tuple[Action, ...] = (
     _ev("fault", "Fault", "serve", ("W",), catalog.FAULT),
     _ev("let", "Let", "serve", ("E",), catalog.LET),
     _ev("ace", "Ace", "serve", ("R",), catalog.ACE),
+    Action("set_server", "Set server…", "serve"),  # button only: the quick server picker
     # Games: G and bottom row
     _ev("game_start", "Game start", "game", ("G",), catalog.GAME_START),
     _ev("game_start_other_server", "Game start (other server)", "game", ("Shift+G",),

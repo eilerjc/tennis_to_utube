@@ -39,3 +39,13 @@ def config_dir(tmp_path, monkeypatch):
     d.mkdir()
     monkeypatch.setenv("TENNIS_TO_UTUBE_CONFIG_DIR", str(d))
     return d
+
+
+@pytest.fixture(autouse=True)
+def _no_server_menu(request, monkeypatch):
+    """GUI tests never open the real "Who serves?" menu (it blocks): the first player is
+    picked unless a test replaces ``page.ask_server`` itself."""
+    if "gui" in request.keywords and HAVE_QT:
+        from tennis_to_utube.gui.mark_page import MarkPage
+
+        monkeypatch.setattr(MarkPage, "ask_server", lambda self, players: players[0] if players else None)

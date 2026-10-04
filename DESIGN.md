@@ -232,7 +232,12 @@ may say "won"/"lost"/"?" but all store the same type.
   fault. Logging serves stays optional — without them, Point is pressed as usual.
 - **Server tracking:** singles and **doubles from the start**. App predicts next server
   (including tiebreak rotation and fixed doubles partner order per set); user confirms with
-  one press.
+  one press. While the server is **not known yet** (first game), `G` pops a quick "Who
+  serves?" picker (keys 1/2/…; Esc leaves it open); in doubles it also asks when the team's
+  server can't be predicted. **Set server…** (button in the Serve group) uses the same
+  picker any time: in a game it changes that game's Game start, otherwise it records a Set
+  score holding only the server (for the next game). The score panel marks the server
+  with ● and says "Server not set" until it is known.
 - **Back-annotation of unknowns:** when a game (or set) closes, search all valid assignments
   of the unknown points (or games) consistent with rules, known outcomes, event count and
   the closing result (DP over score states):
@@ -327,10 +332,10 @@ scales). Steps along the top: **1 Files → 2 Mark → 3 Trim → 4 Export**. Ma
 ```
 ┌──────────────────────────────────────────┬────────────────────┐
 │                                          │ score / server     │
-│               Video (mpv)                ├────────────────────┤
-│                                          │ event buttons      │
-├──────────────────────────────────────────┤ (key rows,         │
-│ transport · speed drop-down · time       │  suggested lit)    │
+│               Video (mpv)                │ (always visible)   │
+│                                          ├────────────────────┤
+├──────────────────────────────────────────┤ event buttons      │
+│ transport · speed drop-down · time       │ (scroll; lit = next)│
 ├──────────────────────────────────────────┴────────────────────┤
 │ overview bar (whole match)                                     │
 │ detail strip (zoomable)                                        │
@@ -347,7 +352,7 @@ Runs from source for now: `run.bat` sets up `.venv` on first use (one-click .exe
   agreed with the owner).
 - Skip back/forward 5 s and 1 s (distances configurable); jump to previous/next event.
 - Frame step forward and back with hold-to-repeat; also the **mouse wheel over the video,
-  only while paused** (does nothing while playing). (Back-stepping long-GOP HEVC is slower;
+  only while paused** (wheel forward/up = next frame, owner's choice) (does nothing while playing). (Back-stepping long-GOP HEVC is slower;
   verify feel on real footage.)
 - **Reaction offset:** marks are shifted earlier by a configurable real-time delay scaled by
   playback speed (default **200 ms** at 1×, agreed). Marks can be nudged by single frames afterward.

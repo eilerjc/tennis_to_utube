@@ -115,12 +115,11 @@ class MarkPage(QWidget):
         self.score_panel = ScorePanel()
         self.match_button = _button("Players && format…", "Rename players, change the format")
         self.match_button.clicked.connect(lambda *_: self.edit_match())
-        self.side_panel = QWidget()
+        self.side_panel = QWidget()  # the button groups (scroll); the score stays on top
         self.side_layout = QVBoxLayout(self.side_panel)
         head = QHBoxLayout()
         head.addWidget(self.score_panel, 1)
         head.addWidget(self.match_button, 0, Qt.AlignmentFlag.AlignTop)
-        self.side_layout.addLayout(head)
         self.bottom = QWidget()
         self.bottom_layout = QVBoxLayout(self.bottom)
         self.bottom_layout.setContentsMargins(0, 0, 0, 0)
@@ -155,9 +154,14 @@ class MarkPage(QWidget):
         side_scroll = QScrollArea()
         side_scroll.setWidgetResizable(True)
         side_scroll.setWidget(self.side_panel)
-        side_scroll.setMinimumWidth(540)
         side_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        top.addWidget(side_scroll)
+        side = QWidget()
+        side.setMinimumWidth(540)
+        side_col = QVBoxLayout(side)
+        side_col.setContentsMargins(0, 0, 0, 0)
+        side_col.addLayout(head)
+        side_col.addWidget(side_scroll, 1)
+        top.addWidget(side)
         top.setStretchFactor(0, 1)
         outer = QSplitter(Qt.Orientation.Vertical)
         outer.addWidget(top)
@@ -192,6 +196,7 @@ class MarkPage(QWidget):
             "ending_state": self.mark_ending_state,
             "game_start": lambda: self.mark_game_start(other_server=False),
             "game_start_other_server": lambda: self.mark_game_start(other_server=True),
+            "set_server": self.set_server,
         }
         for a in ACTIONS:
             if a.event_type is not None and a.id not in handlers:
@@ -333,17 +338,40 @@ class MarkPage(QWidget):
         else:
             self._after_edit(f"{catalog.label(e.type)} at {playback.clock_text(t)}")
 
+    def _all_players(self) -> list[str]:
+        match = self.session.mf.match
+        return names.players(match, "A") + names.players(match, "B")
+
     def mark_game_start(self, other_server: bool) -> None:
-        """Game start with the predicted server; in doubles, when the server cannot be
-        predicted, a quick picker (keys 1/2) — the time is taken at the key press."""
+        """Game start with the predicted server. When the server is not known yet (first
+        game), or in doubles when the team's server cannot be predicted, a quick picker
+        (keys 1/2/…) — the time is taken at the key press. Esc leaves the server open."""
         if self.session is None:
             return
         t = self.mark_time()
         side, player = self.session.game_start_server(t, other_server)
-        if player is None:
+        if side is None:
+            player = self.ask_server(self._all_players())
+            side = names.side_of(self.session.mf.match, player) if player else None
+        elif player is None:
             player = self.ask_server(names.players(self.session.mf.match, side))
         action = "game_start_other_server" if other_server else "game_start"
         self.mark(action, t, side=side, player=player)
+
+    def set_server(self) -> None:
+        """Set server…: pick who serves now (changes the current game's Game start, or
+        records the server for the next game)."""
+        if self.session is None:
+            return
+        t = self.mark_time()
+        player = self.ask_server(self._all_players())
+        if player is None:
+            return
+
+        def apply():
+            self.selected_id = self.session.set_server(t, player).id
+
+        self._edit(apply, f"Server: {player}")
 
     # Dialog hooks (tests replace these)
     def ask_server(self, players: list[str]) -> str | None:

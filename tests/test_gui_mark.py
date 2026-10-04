@@ -88,8 +88,10 @@ def test_wheel_steps_frames_only_when_paused(window, qapp):
                          Qt.ScrollPhase.NoScrollPhase, False)
         page.player.wheelEvent(ev)
 
-    wheel(-120)  # wheel down = forward one frame
+    wheel(120)  # wheel forward (up) = forward one frame
     assert page.position() == 10_010  # frame 600 starts at 10010.0
+    wheel(-120)  # wheel back (down) = back one frame
+    assert page.position() == 9_994  # frame 599 starts at 9993.3
     page.player.set_paused(False)
     before = page.player._base_ms
     wheel(-120)
@@ -229,7 +231,8 @@ def test_doubles_server_picker(window):
     page.player.seek(80_000)
     page.actions["game_start"].trigger()
     e = page.session.event(page.selected_id)
-    assert asked == [["Emma", "Ana"]] and (e.side, e.player, e.t_ms) == ("A", "Ana", 80_000)
+    # first game: nobody known to serve yet, so all four are offered
+    assert asked == [["Emma", "Ana", "Sara", "Mia"]] and (e.side, e.player, e.t_ms) == ("A", "Ana", 80_000)
     page.player.seek(81_000)
     page.actions["game_end_a"].trigger()
     page.player.seek(82_000)
@@ -239,10 +242,43 @@ def test_doubles_server_picker(window):
     assert (e.type, e.side, e.player) == ("game_start", "B", None)
 
 
-def test_singles_never_asks_for_server(window):
+def test_singles_asks_for_server_only_while_unknown(window):
     page = window.mark
-    page.ask_server = lambda players: pytest.fail("asked in singles")
+    players = [page.session.mf.match["sides"][s]["players"][0] for s in "AB"]
+    asked = []
+    page.ask_server = lambda options: asked.append(options) or options[1]
+    assert "Server not set" in page.score_panel.text()
     page.player.seek(85_000)
-    page.actions["game_start_other_server"].trigger()
+    page.actions["game_start"].trigger()
     e = page.session.event(page.selected_id)
-    assert e.player in ("Player 1", "Player 2")
+    assert asked == [players] and (e.side, e.player) == ("B", players[1])
+    assert "Server not set" not in page.score_panel.text()
+    page.ask_server = lambda options: pytest.fail("asked again")
+    page.player.seek(86_000)
+    page.actions["game_end_b"].trigger()
+    page.player.seek(87_000)
+    page.actions["game_start"].trigger()  # predicted from now on
+    assert page.session.event(page.selected_id).side == "A"
+
+
+def test_set_server_button(window):
+    page = window.mark
+    players = [page.session.mf.match["sides"][s]["players"][0] for s in "AB"]
+    page.ask_server = lambda options: options[0]
+    page.player.seek(10_000)
+    page.buttons.buttons["set_server"].click()  # between games: a Set score with the server
+    e = page.session.event(page.selected_id)
+    assert (e.type, e.details) == ("score_state", {"server": players[0]})
+    assert page.session.flow_at(11_000).next_server == "A"
+    page.player.seek(12_000)
+    page.actions["game_start"].trigger()
+    start = page.selected_id
+    count = len(page.session.mf.events)
+    page.ask_server = lambda options: options[1]
+    page.player.seek(13_000)
+    page.buttons.buttons["set_server"].click()  # in a game: changes its Game start
+    assert page.selected_id == start
+    assert page.session.event(start).side == "B" and len(page.session.mf.events) == count
+    page.ask_server = lambda options: None  # Esc: nothing changes
+    page.buttons.buttons["set_server"].click()
+    assert page.session.event(start).side == "B"

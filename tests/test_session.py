@@ -20,8 +20,9 @@ def session(tmp_path, kind="singles"):
 
 def test_mark_points_games_and_servers(tmp_path):
     s = session(tmp_path)
-    g = s.mark("game_start", 1000)
-    assert (g.type, g.side, g.player) == ("game_start", "A", "Emma")  # unknown: ours
+    assert s.game_start_server(1000) == (None, None)  # not known yet: the GUI asks
+    g = s.mark("game_start", 1000, side="A", player="Emma")
+    assert (g.type, g.side, g.player) == ("game_start", "A", "Emma")
     ace = s.mark("ace", 2000)
     assert (ace.side, ace.player) == ("A", "Emma")
     for t in (3000, 4000, 5000):
@@ -93,7 +94,7 @@ def test_analysis_refreshes_and_save(tmp_path):
 
 def test_rename_and_set_match(tmp_path):
     s = session(tmp_path)
-    s.mark("game_start", 1)
+    s.mark("game_start", 1, side="A", player="Emma")
     assert s.rename_player("Emma", "Emma Smith") == 2
     with pytest.raises(ValueError):
         s.rename_player("Sara", "Emma Smith")
@@ -184,3 +185,20 @@ def test_shot_sets_an_unknown_point_winner(tmp_path):
     p = s.mark("point_unknown", 1000)
     s.mark("unforced_error_b", 2000)
     assert s.event(p.id).result == "A"
+
+
+def test_set_server(tmp_path):
+    s = session(tmp_path)
+    cp = s.set_server(500, "Sara")  # before anything: a Set score holding the server
+    assert (cp.type, cp.details) == ("score_state", {"server": "Sara"})
+    assert s.game_start_server(1000) == ("B", "Sara")
+    g = s.mark("game_start", 1000, side="B", player="Sara")
+    s.mark("point_a", 2000)
+    assert s.set_server(2500, "Emma").id == g.id  # in a game: its Game start changes
+    assert (g.side, g.player) == ("A", "Emma") and s.flow_at(3000).score.server == "A"
+    assert s.undo() and s.event(g.id).side == "B"
+    with pytest.raises(ValueError):
+        s.set_server(3000, "Nobody")
+    s.locked = True
+    with pytest.raises(LockedError):
+        s.set_server(3000, "Emma")

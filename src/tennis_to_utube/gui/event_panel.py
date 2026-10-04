@@ -21,7 +21,7 @@ from .actions import call, key_text
 # Button rows, mirroring the keyboard rows (DESIGN.md §11).
 BUTTON_ROWS: list[tuple[str, list[str]]] = [
     ("Points", ["point_a", "point_b", "point_unknown"]),
-    ("Serve", ["serve_in", "fault", "let", "ace"]),
+    ("Serve", ["serve_in", "fault", "let", "ace", "set_server"]),
     ("Shots (end the point)", ["winner_a", "forced_error_a", "unforced_error_a",
                                "winner_b", "forced_error_b", "unforced_error_b"]),
     ("Games", ["game_start", "game_start_other_server", "game_end_a", "game_end_b",
@@ -80,6 +80,9 @@ class ScorePanel(QLabel):
             rows.append(f"<tr><td style='color:#2e7d32'>{serving}</td>"
                         f"<td>{html.escape(names.side_name(match, side))}</td>{sets}{games}{pts}</tr>")
         uncertain = "" if v.certain else "<br><small>(score partly uncertain — see Issues)</small>"
+        if v.server is None and not flow.match_over:
+            uncertain += ("<br><small style='color:#b35c00'>Server not set — G asks, or "
+                          "Set server… in Serve</small>")
         self.setText(f"<b>{heading}</b><table cellspacing='8'>{''.join(rows)}</table>{uncertain}")
 
 

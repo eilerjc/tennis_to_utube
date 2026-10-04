@@ -262,14 +262,16 @@ class Session:
 
     # -- marking --------------------------------------------------------------------------
 
-    def game_start_server(self, t_ms: int, other_server: bool = False) -> tuple[str, str | None]:
+    def game_start_server(self, t_ms: int, other_server: bool = False
+                          ) -> tuple[str | None, str | None]:
         """(side, player) a Game start at ``t_ms`` records: the predicted server, or the other
-        side's. The player is None in doubles when it cannot be predicted (team's choice)."""
+        side's. (None, None) when the server is not known yet (the GUI asks); the player is
+        None in doubles when it cannot be predicted (team's choice)."""
         flow = self.flow_at(t_ms)
         match = self.mf.match
         side, player = flow.next_server, flow.next_server_player
         if side is None:
-            side, player = "A", None  # unknown: assume ours; Shift+G for the other side
+            return None, None
         if other_server:
             side, player = other(side), None
         if player is None and match.get("kind") != "doubles":
@@ -330,6 +332,19 @@ class Session:
         if e.result not in ("A", "B"):
             fields["result"] = shot_point_winner(shot, hitter)
         return self.update(event_id, **fields)
+
+    def set_server(self, t_ms: int, player: str) -> Event:
+        """Who serves at ``t_ms``: changes the Game start of the game in progress, or (between
+        games, or without a Game start) records a Set score holding only the server."""
+        side = names.side_of(self.mf.match, player)
+        if side is None:
+            raise ValueError(f"{player!r} is not a player of this match")
+        if self.flow_at(t_ms).in_game:
+            starts = [e for e in self.mf.events if e.type == catalog.GAME_START and e.t_ms <= t_ms]
+            if starts:
+                start = max(starts, key=lambda e: e.t_ms)
+                return self.update(start.id, side=side, player=player)
+        return self.add(t_ms, catalog.SCORE_STATE, details={"server": player})
 
     # -- saving ------------------------------------------------------------------------------
 

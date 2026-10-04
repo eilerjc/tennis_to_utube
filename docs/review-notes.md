@@ -13,6 +13,10 @@
 - Files: folder browsing is now Explorer-like (tree, Quick access, subfolders with what they
   hold, Back/Forward/Up). Check it on `W:\video`, especially speed on the network drive.
 
+- Mark: who serves — score panel ● / "Server not set"; first `G` asks (picker); **Set
+  server…** button in Serve. Score stays on top, buttons scroll. Wheel forward = next
+  frame. Speed is a drop-down with 4× and 8×.
+
 ## Open questions
 - None right now.
 
