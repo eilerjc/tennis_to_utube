@@ -24,12 +24,12 @@ ENDING_STATE = "ending_state"  # final score from another source (scorebook), en
 # Points
 POINT = "point"  # result: "A" | "B" | "unknown"
 
-# Serve. First vs second serve is derived (a fault earlier in the same point).
+# Serve. First vs second serve is derived (a fault earlier in the same point); a double
+# fault is two faults in the same point.
 SERVE_IN = "serve_in"
 FAULT = "fault"
 LET = "let"
 ACE = "ace"
-DOUBLE_FAULT = "double_fault"
 
 # Shot [data only for v1 UI]. How a shot missed (out, net, long, wide, ...) is a
 # qualifier in tags/details, not a type.
@@ -61,7 +61,6 @@ LABELS: dict[str, str] = {
     FAULT: "Fault",
     LET: "Let",
     ACE: "Ace",
-    DOUBLE_FAULT: "Double fault",
     WINNER: "Winner",
     FORCED_ERROR: "Forced error",
     UNFORCED_ERROR: "Unforced error",

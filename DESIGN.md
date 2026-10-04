@@ -142,9 +142,10 @@ may say "won"/"lost"/"?" but all store the same type.
 - Point `point`, won by A / B / **unknown** (can't see ball, can't hear call/score)
 
 **Serve** (optional finer level)
-- Serve in `serve_in`, fault `fault`, let `let`, ace `ace`, double fault `double_fault`.
-  First vs second serve is derived (a fault earlier in the same point), so one `serve_in`
-  covers both. A logged serve gives the exact point start time.
+- Serve in `serve_in`, fault `fault`, let `let`, ace `ace`. First vs second serve is
+  derived (a fault earlier in the same point), so one `serve_in` covers both; a double fault
+  is two faults in the same point (no separate type). A logged serve gives the exact point
+  start time. *(Open: does the second fault / an ace end the point by itself? See §7.)*
 
 **Shot** (optional finer level) [data only for v1 UI]
 - Winner `winner`, forced error `forced_error`, unforced error `unforced_error` — point-ending
