@@ -45,8 +45,8 @@ GX030008.MP4   2,161,484,725 bytes   (modified 17:36)
 - **Windows first.** User PC: i9-14900K, 64 GB RAM, RTX 4060 Ti.
 - Python 3.11+, **PySide6** (Qt, LGPL), **mpv** via `python-mpv`/libmpv for playback,
   **ffmpeg/ffprobe** for probing, cutting, joining.
-- Trim/join are **stream copy only** — never re-encode. (A burned-in scoreboard would need
-  a re-encode via NVENC; that is a future, optional feature.)
+- Trim/join are **stream copy only** — never re-encode. The one exception is the separate
+  Overlay tool (§9a): a burned-in scoreboard needs a re-encode (NVENC).
 - Core logic (event log, flow, scoring, chapters, trim planning) is pure Python with no GUI
   dependency so it can be fully unit-tested on Linux CI/cloud.
 
@@ -59,7 +59,7 @@ user config dir:
 | Marker (GUI) | `run.bat` | `config.toml` (playback, keys, names, scoring, full-video links) | Files → Mark → Trim → Export |
 | Trim tool | `trim.bat` / `python -m tennis_to_utube.trimtool` | `trim.toml` (what is cut, serve lead-in, the trimmed video's link lead-ins and chapter gap, output name) | makes the trimmed video; writes the trimmed video's chapters and links |
 | Stats | `stats.bat` / `python -m tennis_to_utube.stats` | — | CSV statistics (§12a) |
-| Overlay (future) | `overlay.bat` | `overlay.toml` | burned-in scoreboard (re-encode) |
+| Overlay tool | `overlay.bat` / `python -m tennis_to_utube.overlay` | `overlay.toml` (what the board shows, its look and place, the encoder) | burned-in scoreboard on the trimmed or full video (re-encode, §9a) |
 
 The Marker's **Trim** screen stays: it lists the cuts (rules and lead-ins from `trim.toml`,
 per-match choices in the match file), lets the user untick them and **runs the Trim tool**
@@ -357,6 +357,44 @@ stdin (the partial video is deleted).
   the *actual snapped* boundaries. Events inside removed regions are excluded from export
   and listed as issues (never silently lost).
 
+## 9a. Scoreboard overlay — the Overlay tool
+
+Agreed with the owner (2026-10-04). A separate tool (§2), command line only for now:
+`python -m tennis_to_utube.overlay <match file>` (Windows: drop the match file on
+`overlay.bat`). Settings in `overlay.toml`. The only part of the project that re-encodes.
+
+- **Input:** the **trimmed video** (default; it must have been made by the Trim tool) or,
+  with `--full`, the **full recording** (the sources joined in order). Both are supported.
+  Board times are the event times remapped through the made video's stored plan
+  (`output.segments`), so nothing is re-planned.
+- **Output:** `<match> trimmed overlay.mp4` / `<match> overlay.mp4` (names in
+  `overlay.toml`). The overlay video is uploaded **instead of** the plain one, never both:
+  timing is identical, so it uses that video's chapters and links, and its YouTube id is
+  pasted where the plain one's would go (Trim step / Export step). Nothing new is stored
+  in the match file.
+- **What the board shows** (US Open style, owner's choice): top-left; one row per side
+  with full names (doubles: "Emma Jones / Sara Smith" on one line); **every completed
+  set's games** (tiebreak points of the set's loser as a small superscript; a match
+  tiebreak shows its points), the current set's games, and the **points** (0/15/30/40/AD;
+  counts in a tiebreak); ● marks the side serving the next point. Points are shown only
+  when the match has point-level marks (Point, ace, fault, shot), or always/never by
+  setting. After the match only the sets are shown, the winner highlighted.
+- **Score source:** the score engine (§7) after each event, changing at the event that
+  changed it (a Point mark, at the end of the point) plus `update_delay_ms`. Only what the
+  engine is certain of is shown; unknown parts are left blank. Before any score is known
+  (before the first set) the board shows **0s**, not blank.
+- **Drawing:** each distinct board is drawn once with **Pillow** to a PNG of one fixed
+  canvas size (text is measured, so the box fits full names; libass/ASS cannot size a box
+  to text). A concat list of the PNGs with their durations is the overlay stream, so
+  changes land exactly at their times. Board building and timing are pure Python
+  (tested on any OS); drawing needs Pillow.
+- **Encoding:** `ffmpeg … -filter_complex overlay`, `hevc_nvenc` (RTX 4060 Ti) with
+  constant-quality VBR (`encode.args` in `overlay.toml`), `-tag:v hvc1`, 8-bit
+  `yuv420p`, audio copied, `+faststart`. Decoding may use the GPU (`encode.hwaccel`),
+  frames come back to the CPU for the overlay. Output duration checked with ffprobe.
+- **Preview:** `--preview <time> [--seconds N]` encodes a short stretch (default 20 s) to
+  `<match> overlay preview.mp4`; `--png <time>` writes just the board at that time.
+
 ## 10. Playback and timeline UI
 
 **Window** (agreed): works on a 1920×1200 screen or larger (the owner's is 3840×2160; Qt
@@ -478,7 +516,7 @@ marks; shot stats only count marked shots.
 
 - AI-generated events (`source: "ai"`, confidence) into the same log, with a review queue;
   human corrections override but keep the AI's original. Human logs double as labeled data.
-- Burned-in scoreboard export (NVENC re-encode), showing full player names.
+- Overlay tool in the GUI (a button on the Trim / Export step); more board styles.
 - YouTube API upload.
 - Coaching filters across a match or season ("all close misses long on the backhand").
 - Rally/dead-time auto-detection (deferred; not needed for whole-match review).
@@ -497,6 +535,8 @@ marks; shot stats only count marked shots.
 
 Status (2026-10-04): steps 1–5 merged; step 6 built (all screens) and tested offscreen —
 awaiting the owner's check on Windows.
+Overlay tool (§9a) built 2026-10-04 (command line), tested with libx265 on synthetic video;
+NVENC to verify on the owner's PC (needs a driver new enough for the ffmpeg build).
 
 **Testing:** pure-Python unit tests for everything in 1–5. End-to-end trim tests on
 **synthetic video matching the real profile** (`libx265`, `60000/1001`, keyint 60,

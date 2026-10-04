@@ -5,7 +5,8 @@ The override file is TOML at ``<user config dir>/config.toml``
 user wants to change. Problems in it (bad TOML, wrong types, unknown keys) produce
 warnings; the app always starts with usable settings.
 
-The Trim tool has its own file, ``trim.toml`` (:func:`load_trim_config`, same rules).
+The Trim tool has its own file, ``trim.toml`` (:func:`load_trim_config`, same rules), and
+so does the Overlay tool, ``overlay.toml`` (:func:`load_overlay_config`).
 
 Per-match overrides live in the match file's ``settings`` object and are layered on
 top with :func:`effective_settings`.
@@ -24,6 +25,7 @@ from typing import Any
 APP_NAME = "tennis_to_utube"
 CONFIG_FILENAME = "config.toml"
 TRIM_CONFIG_FILENAME = "trim.toml"
+OVERLAY_CONFIG_FILENAME = "overlay.toml"
 # Overrides the user config directory (used by tests; handy for portable installs).
 ENV_CONFIG_DIR = "TENNIS_TO_UTUBE_CONFIG_DIR"
 
@@ -69,6 +71,41 @@ TRIM_DEFAULTS: dict[str, Any] = {
     "chapter_gap_ms": 600_000,
     # Made video's file name, next to the match file ({stem} = the match name).
     "output": {"name": "{stem} trimmed.mp4"},
+}
+
+# overlay.toml — the Overlay tool (DESIGN.md §9a).
+OVERLAY_DEFAULTS: dict[str, Any] = {
+    # Points column: "auto" (when the match has point marks), "on" or "off".
+    "points": "auto",
+    # The board changes this long after the event that changed the score.
+    "update_delay_ms": 0,
+    "board": {
+        "corner": "top_left",  # top_left, top_right, bottom_left, bottom_right
+        "margin": 0.03,  # gap to the video edges, as a fraction of the video height
+        "row_height": 0.034,  # one player row, as a fraction of the video height
+        # A font file or a name the system finds (Windows: C:\Windows\Fonts); Pillow's
+        # built-in font if it cannot be loaded.
+        "font": "arialbd.ttf",
+        "background": "#002D72",  # US Open blue
+        "text": "#FFFFFF",
+        "dim_text": "#9DB0D3",  # games of a completed set's loser
+        "accent": "#FFD200",  # US Open yellow: points column, server ball, winner
+        "accent_text": "#002D72",
+        "opacity": 0.92,
+    },
+    "encode": {
+        "encoder": "hevc_nvenc",
+        "args": ["-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", "21", "-b:v", "0"],
+        "pix_fmt": "yuv420p",
+        "hwaccel": "cuda",  # "" decodes on the CPU
+    },
+    # File names next to the match file ({stem} = the match name).
+    "output": {
+        "trimmed": "{stem} trimmed overlay.mp4",
+        "full": "{stem} overlay.mp4",
+        "preview": "{stem} overlay preview.mp4",
+        "png": "{stem} overlay board.png",
+    },
 }
 
 # Tables whose keys are open-ended (one entry per event type). New keys are accepted
@@ -125,6 +162,11 @@ def load_config(path: Path | None = None, *, defaults: dict[str, Any] = DEFAULTS
 def load_trim_config(path: Path | None = None) -> Config:
     """The Trim tool's settings: TRIM_DEFAULTS plus ``<user config dir>/trim.toml``."""
     return load_config(path, defaults=TRIM_DEFAULTS, filename=TRIM_CONFIG_FILENAME)
+
+
+def load_overlay_config(path: Path | None = None) -> Config:
+    """The Overlay tool's settings: OVERLAY_DEFAULTS plus ``<user config dir>/overlay.toml``."""
+    return load_config(path, defaults=OVERLAY_DEFAULTS, filename=OVERLAY_CONFIG_FILENAME)
 
 
 def _type_ok(default: Any, value: Any) -> bool:
