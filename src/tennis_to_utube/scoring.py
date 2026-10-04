@@ -253,11 +253,11 @@ def read_checkpoint(e: Event, match: dict[str, Any] | None = None) -> Checkpoint
     sets = None
     if "sets" in d:
         raw = d["sets"] if isinstance(d["sets"], list) else None
-        pairs = [_pair(x) for x in raw] if raw is not None else None
-        if pairs is None or any(p is None or p[0] == p[1] for p in pairs):
+        entries = [set_entry(x) for x in raw] if raw is not None else None
+        if entries is None or any(s is None for s in entries):
             problems.append(f"invalid sets {d['sets']!r}")
         else:
-            sets = tuple(SetScore("A" if a > b else "B", (a, b)) for a, b in pairs)
+            sets = tuple(entries)
     games = _pair(d.get("games"))
     if "games" in d and games is None:
         problems.append(f"invalid games {d['games']!r}")
@@ -663,23 +663,47 @@ def parse_pair(text: str) -> tuple[int, int] | None:
     return None
 
 
-def parse_sets(text: str) -> list[tuple[int, int]] | None:
-    """Set scores as typed: "6-4 3-6", "6-4, 7-6(5), [10-8]" → [(6, 4), (7, 6), (1, 0)].
+def parse_sets(text: str) -> list[tuple[int, ...]] | None:
+    """Set scores as typed, tiebreak points kept: "6-4 3-6" → [(6, 4), (3, 6)];
+    "7-6(5)" → (7, 6, 7, 5); a match tiebreak "[10-8]" → (1, 0, 10, 8).
 
-    A bracketed match tiebreak counts as a 1-0 set; "(5)" tiebreak details are ignored.
-    Empty text → []; anything not understood → None.
+    Entries are (games A, games B) or (games A, games B, tiebreak A, tiebreak B), as stored in
+    Set score / Ending state ``details.sets``. "(5)" is the loser's tiebreak points; the
+    winner's are 7, or 2 more in an extended tiebreak. Empty → []; not understood → None.
     """
-    out = []
+    out: list[tuple[int, ...]] = []
     for token in re.split(r"[,\s]+", text.strip()):
         if not token:
             continue
-        token = re.sub(r"\(\d+\)$", "", token)
+        m = re.fullmatch(r"(.+?)\((\d+)\)", token)
+        loser_tb = int(m.group(2)) if m else None
+        token = m.group(1) if m else token
         bracket = token.startswith("[") and token.endswith("]")
         pair = parse_pair(token.strip("[]"))
         if pair is None or pair[0] == pair[1]:
             return None
-        out.append(((1, 0) if pair[0] > pair[1] else (0, 1)) if bracket else pair)
+        a_won = pair[0] > pair[1]
+        if bracket:
+            out.append(((1, 0) if a_won else (0, 1)) + pair)
+        elif loser_tb is not None:
+            winner_tb = max(7, loser_tb + 2)
+            out.append(pair + ((winner_tb, loser_tb) if a_won else (loser_tb, winner_tb)))
+        else:
+            out.append(pair)
     return out
+
+
+def set_entry(value: Any) -> SetScore | None:
+    """A stored set: [games A, games B] or [games A, games B, tiebreak A, tiebreak B]."""
+    if not isinstance(value, list) or len(value) not in (2, 4):
+        return None
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in value):
+        return None
+    a, b = value[0], value[1]
+    if a == b:
+        return None
+    tiebreak = (value[2], value[3]) if len(value) == 4 else None
+    return SetScore("A" if a > b else "B", (a, b), tiebreak)
 
 
 def parse_points(text: str, tiebreak: bool = False) -> tuple[int, int] | None:

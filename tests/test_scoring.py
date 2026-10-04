@@ -506,8 +506,23 @@ def test_tiebreak_start_needs_level_games():
 
 
 @pytest.mark.parametrize("text, sets", [
-    ("6-4 3-6", [(6, 4), (3, 6)]), ("6–4, 7-6(5), [10-8]", [(6, 4), (7, 6), (1, 0)]),
-    ("", []), ("6-6", None), ("6-x", None), ("[8-10]", [(0, 1)]),
+    ("6-4 3-6", [(6, 4), (3, 6)]),
+    ("6–4, 7-6(5), [10-8]", [(6, 4), (7, 6, 7, 5), (1, 0, 10, 8)]),
+    ("6-7(10)", [(6, 7, 10, 12)]),  # extended tiebreak: winner has 2 more
+    ("", []), ("6-6", None), ("6-x", None), ("[8-10]", [(0, 1, 8, 10)]), ("7-6(x)", None),
 ])
 def test_parse_sets(text, sets):
     assert scoring.parse_sets(text) == sets
+
+
+def test_stored_sets_keep_tiebreaks():
+    log = Log()
+    log("score_state", details={"sets": [[7, 6, 7, 5], [4, 6], [1, 0, 10, 8]]})
+    an, view = final(log.events, PRESETS["standard_mtb"])
+    assert view.sets == (SetScore("A", (7, 6), (7, 5)), SetScore("B", (4, 6)),
+                         SetScore("A", (1, 0), (10, 8)))
+    assert view.winner == "A" and score_text(view) == "7–6(5), 4–6, [10–8]"
+    assert an.issues == []
+    bad = Log()
+    bad("score_state", details={"sets": [[7, 6, 7]]})
+    assert [i.code for i in analyze(bad.events, STD).issues] == ["invalid_score_state"]

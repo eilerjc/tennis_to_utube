@@ -19,7 +19,7 @@ from .config import Settings
 from .flow import analyze_match
 from .issues import Issue
 from .matchfile import Event, MatchFile
-from .scoring import Analysis, SetScore, set_text
+from .scoring import Analysis, set_entry, set_text
 from .trim import TrimPlan, remap_events
 
 
@@ -106,9 +106,9 @@ def match_summary(mf: MatchFile, analysis: Analysis) -> str:
         return f"{head}: {sets} — {names.side_name(mf.match, final.winner)} won"
     ending = [e for e in mf.sorted_events() if e.type == catalog.ENDING_STATE]
     if ending:
-        pairs = [p for p in ending[-1].details.get("sets", []) if isinstance(p, list) and len(p) == 2]
-        if pairs:
-            sets = ", ".join(set_text(SetScore(None, (a, b))) for a, b in pairs)
+        entries = [set_entry(p) for p in ending[-1].details.get("sets", [])]
+        if entries and all(entries):
+            sets = ", ".join(set_text(s) for s in entries)
             return f"{head}: {sets} (final score from the scorebook)"
     return head
 

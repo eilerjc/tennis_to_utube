@@ -109,3 +109,15 @@ def test_match_summary():
     assert match_summary(pro, analyze_match(pro)) == "Player 1 vs Player 2: 0–8 — Player 2 won"
     md = links_markdown([], "T", "Emma vs Sara")
     assert md.startswith("# T\n\nEmma vs Sara\n")
+
+
+def test_match_summary_keeps_tiebreaks():
+    from tennis_to_utube.flow import analyze_match
+    from tennis_to_utube.scoring import parse_sets
+    from tennis_to_utube.youtube import match_summary
+
+    mf = match()
+    sets = [list(p) for p in parse_sets("6-4 6-7(5) [10-8]")]
+    mf.add_event(299_000, "ending_state", details={"sets": sets, "entered": True})
+    assert match_summary(mf, analyze_match(mf)) == (
+        "Emma vs Sara: 6–4, 6–7(5), [10–8] (final score from the scorebook)")

@@ -147,13 +147,14 @@ may say "won"/"lost"/"?" but all store the same type.
 - **Set score** `score_state` — score checkpoint, allowed **at any time**, as often as needed
   (video starts mid-match, or the user knows the real score and wants to correct it). Only
   the known parts are entered in `details`; the rest keeps being computed from earlier
-  events, or is unknown. Parts: `"sets": [[6, 4], ...]` (completed sets, A–B), `"games":
+  events, or is unknown. Parts: `"sets": [[6, 4], [7, 6, 7, 5], [1, 0, 10, 8]]` (completed
+  sets, A–B; optional tiebreak points A–B — typed as "6-4 7-6(5) [10-8]"), `"games":
   [3, 2]` (current set; without points, taken as between games), `"points": [2, 3]` (counts;
   the user types "30-40", "AD-40", "deuce", or "5-3" in a tiebreak), `"server"` (a name or a
   side). From that point the entered score is authoritative; disagreement with what earlier
   events add up to is an issue. A Set score before anything was scored cannot conflict.
 - **Ending state** `ending_state` — final score from another source (scorebook) when video
-  ends early; marked as *entered*, not observed.
+  ends early; marked as *entered*, not observed. Same `sets` format (tiebreak points kept).
 
 **Points** (one press per point, at the end of the point)
 - Point `point`, won by A / B / **unknown** (can't see ball, can't hear call/score)

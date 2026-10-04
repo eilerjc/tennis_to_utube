@@ -33,7 +33,9 @@ def _pair(value: Any) -> tuple[int, int] | None:
 def score_parts(e: Event) -> tuple[list[tuple[int, int]] | None, tuple[int, int] | None]:
     """(completed sets, current-set games) from a Set score event; None = not given/invalid."""
     sets = e.details.get("sets")
-    sets = [_pair(s) for s in sets] if isinstance(sets, list) else None
+    # entries are [a, b] or [a, b, tiebreak a, tiebreak b]
+    sets = ([_pair(s[:2]) if isinstance(s, list) and len(s) in (2, 4) else None for s in sets]
+            if isinstance(sets, list) else None)
     if sets is not None and any(s is None for s in sets):
         sets = None
     return sets, _pair(e.details.get("games"))
