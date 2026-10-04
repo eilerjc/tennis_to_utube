@@ -6,7 +6,7 @@ Uses the score engine, so servers, break points and inferred point winners are t
 as in the app. What can be counted depends on what was marked:
 
 * points (+ who serves, from Game start): points won on serve/return, holds/breaks,
-  break points;
+  break points; in tiebreaks, minibreaks (points won on return / lost on serve);
 * serve marks (serve in / fault / ace): 1st-serve %, 1st/2nd-serve points won, aces,
   double faults (2nd-serve stats only count points with serve marks);
 * shot marks (on their own or on a Point): winners, forced and unforced errors (by the
@@ -46,6 +46,7 @@ class PointRecord:
     double_fault: bool
     shot: tuple[str, str | None] | None  # (type, hitter side)
     break_point: bool  # the receiver wins the game if they win this point
+    tiebreak: bool = False  # played in a tiebreak (or match tiebreak)
 
 
 @dataclass
@@ -106,7 +107,8 @@ def records(mf: matchfile.MatchFile, analysis: Analysis) -> Records:
                 t_ms=e.t_ms, set_no=_set_no(prev), server=server, server_player=player,
                 winner=st.winner, serve_marked=serve_marked, faults_before=faults,
                 ace=e.type == catalog.ACE, double_fault=e.type == catalog.FAULT, shot=shot,
-                break_point=server is not None and _receiver_game_point(prev, server)))
+                break_point=server is not None and _receiver_game_point(prev, server),
+                tiebreak=prev.in_tiebreak is True))
             serve_marked, faults = False, 0
         # games: ended by a point, or recorded at game level (not tiebreaks)
         game_winner = None
@@ -154,6 +156,12 @@ def _side_rows(points: Sequence[PointRecord], games: Sequence[GameRecord]) -> li
     add("Break points won", lambda s: _ratio(sum(p.winner == s for p in bp(s)), len(bp(s))))
     faced = lambda s: [p for p in serving(s) if p.break_point]  # noqa: E731
     add("Break points saved", lambda s: _ratio(sum(p.winner == s for p in faced(s)), len(faced(s))))
+    tb = [p for p in known if p.tiebreak]
+    add("Tiebreak points won", lambda s: _ratio(sum(p.winner == s for p in tb), len(tb)))
+    tb_return = lambda s: [p for p in tb if p.server == other(s)]  # noqa: E731
+    tb_serve = lambda s: [p for p in tb if p.server == s]  # noqa: E731
+    add("Minibreaks won", lambda s: _ratio(sum(p.winner == s for p in tb_return(s)), len(tb_return(s))))
+    add("Minibreaks lost", lambda s: _ratio(sum(p.winner != s for p in tb_serve(s)), len(tb_serve(s))))
     held = lambda s: [g for g in games if g.server == s]  # noqa: E731
     add("Service games won", lambda s: _ratio(sum(g.winner == s for g in held(s)), len(held(s))))
     add("Return games won", lambda s: str(sum(g.winner == s for g in games if g.server == other(s))))

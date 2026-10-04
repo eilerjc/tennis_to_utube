@@ -103,3 +103,27 @@ def test_shots_on_points_are_counted():
     p.details = {"shot": "winner", "shot_side": "B"}
     _, t = table(mf)
     assert t[("Match", "Winners")] == ("1", "1")
+
+
+def test_minibreaks_in_tiebreaks():
+    mf = MatchFile()
+    mf.match["format"] = {"preset": "standard"}
+    mf.match["sides"]["A"]["players"] = ["Emma"]
+    mf.match["sides"]["B"]["players"] = ["Sara"]
+    t = 0
+    for i in range(12):  # 6-6, every game held to love
+        t += 1000
+        mf.add_event(t, "game_start", side="A" if i % 2 == 0 else "B")
+        for _ in range(4):
+            t += 1000
+            mf.add_event(t, "point", result="A" if i % 2 == 0 else "B")
+    # tiebreak: A serves 1, B serves 2-3, A serves 4-5
+    for result in "AABBA":
+        t += 1000
+        mf.add_event(t, "point", result=result)
+    _, tab = table(mf)
+    m = lambda stat: tab[("Match", stat)]  # noqa: E731
+    assert m("Tiebreak points won") == ("3/5 (60%)", "2/5 (40%)")
+    assert m("Minibreaks won") == ("1/2 (50%)", "1/3 (33%)")
+    assert m("Minibreaks lost") == ("1/3 (33%)", "1/2 (50%)")
+    assert m("Break points won") == ("0/0", "0/0")  # not counted in tiebreaks

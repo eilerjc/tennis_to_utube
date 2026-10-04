@@ -419,8 +419,10 @@ on `stats.bat`) writes `<match> stats.csv` (UTF-8 with BOM for Excel) from the e
 only, using the score engine for servers, break points and inferred winners. Columns:
 Section, Stat, side A, side B; sections Match and Set N; doubles adds a By server table.
 Stats: points won, service/return points won, 1st serve in, 1st/2nd serve points won, aces,
-double faults, break points won/saved, service/return games won, winners, forced/unforced
-errors, points with unknown winner (left out). Serve stats only count points with serve
+double faults, break points won/saved (not in tiebreaks), tiebreak points won, minibreaks
+won (tiebreak points won on return) and lost (tiebreak points lost on serve),
+service/return games won, winners, forced/unforced errors, points with unknown winner
+(left out). Serve stats only count points with serve
 marks; shot stats only count marked shots.
 
 ## 13. Future (keep the format ready)
