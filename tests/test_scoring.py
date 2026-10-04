@@ -105,7 +105,7 @@ def test_short_sets_and_pro_set():
 
 def test_tiebreak_serve_rotation_for_aces_and_double_faults():
     log = Log()
-    log("game_start", player="A1")
+    log("game_start", side="A")
     for i in range(12):  # games alternate servers: A serves 6, B serves 6
         log.points("aaaa" if i % 2 == 0 else "bbbb")
     # tiebreak at 6-6: A served game 1, so A serves first in the tiebreak
@@ -150,7 +150,7 @@ def test_mixed_levels():
 
 def test_single_unknown_point_is_inferred():
     log = Log()
-    log("game_start", player="A1")
+    log("game_start", side="A")
     pts = log.points("a?ba")
     log.points("a")
     log("game_end", result="A")
@@ -201,7 +201,7 @@ def test_set_score_constrains_earlier_unknowns():
 
 def test_mid_match_start_and_correction():
     log = Log()
-    log("score_state", details={"sets": [[6, 4]], "games": [3, 2], "server": "B1"})
+    log("score_state", details={"sets": [[6, 4]], "games": [3, 2], "server": "B"})
     log.points("bbbb")
     an, view = final(log.events, PRESETS["standard_mtb"])
     assert view.sets == (SetScore("A", (6, 4)),) and view.games == (3, 3) and view.server == "A"
@@ -247,16 +247,17 @@ def test_conflicts_are_applied_and_reported():
 
 def test_other_issues():
     log = Log()
-    log("game_start", player="A1")
+    log("game_start", side="A")
     log.points("aaaa")
-    log("game_start", player="A1")  # B should serve game 2
+    log("game_start", side="A")  # B should serve game 2
     log.points("a")
     log("game_start")  # game 2 is unfinished
     log("tiebreak_start")
-    log("point", result="A", player="Emma")  # players are referred to as A1, B2, ...
+    log("point", result="A", player="Emma")  # not a player in this match
     log("score_state", details={"games": [1]})
     log("rules_change", details={"format": {"best_of": 2}})
-    codes = [i.code for i in analyze(log.events, STD).issues]
+    match = {"kind": "singles", "sides": {"A": {"players": ["Ana"]}, "B": {"players": ["Sara"]}}}
+    codes = [i.code for i in analyze(log.events, STD, match=match).issues]
     assert codes == ["server_out_of_turn", "game_start_mid_game", "unexpected_tiebreak",
                      "unknown_player", "invalid_score_state", "invalid_rules_change"]
 
@@ -272,7 +273,7 @@ def test_events_after_match_end():
 
 def test_possible_duplicate_point():
     log = Log()
-    log("game_start", player="A1")
+    log("game_start", side="A")
     log("ace")
     log("point", result="A")  # 1 s later, no serve in between
     log("serve_in")
@@ -339,7 +340,7 @@ def simulate(fmt: Format, seed: int):
         return w
 
     def play_game(srv: int, tiebreak_to: int | None) -> tuple[int, tuple[int, int] | None]:
-        log("game_start", player="AB"[srv] + "1")
+        log("game_start", side="AB"[srv])
         p = [0, 0]
         if tiebreak_to:
             order = [srv]
@@ -446,3 +447,25 @@ def test_one_hidden_point_per_game_is_always_inferred(seed):
         if st.event.type == "point" and st.event.result == "unknown":
             assert st.inferred and st.winner == truth[st.event.id]
     assert an.issues == []
+
+
+@pytest.mark.parametrize("text, tb, counts", [
+    ("30-40", False, (2, 3)), ("30–40", False, (2, 3)), ("15-love", False, (1, 0)),
+    ("0 15", False, (0, 1)), ("Deuce", False, (3, 3)), ("40-40", False, (3, 3)),
+    ("AD-40", False, (4, 3)), ("40-ad", False, (3, 4)), ("5-3", True, (5, 3)),
+    ("30-45", False, None), ("ad-ad", False, None), ("5-3", False, None), ("x", True, None),
+])
+def test_parse_points(text, tb, counts):
+    assert scoring.parse_points(text, tiebreak=tb) == counts
+
+
+def test_pro10_preset():
+    fmt = PRESETS["pro10"]
+    log = Log()
+    for _ in range(10):
+        log("game_end", result="A")
+        log("game_end", result="B")
+    view = final(log.events, fmt)[1]
+    assert view.games == (10, 10) and view.in_tiebreak
+    log.points("aaaaaaa")
+    assert final(log.events, fmt)[1].winner == "A"

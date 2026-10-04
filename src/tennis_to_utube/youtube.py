@@ -43,8 +43,7 @@ def describe(e: Event, match: dict[str, Any]) -> str:
         text += f" — won by {names.side_name(match, e.result)}"
     elif e.result == "unknown":
         text += " — winner unknown"
-    who = ((names.player_name(match, e.player) or e.player) if e.player
-           else names.side_name(match, e.side) if e.side in ("A", "B") else None)
+    who = e.player or (names.side_name(match, e.side) if e.side in ("A", "B") else None)
     if who and e.result is None:
         text += f" — {who}"
     if e.tags:
@@ -73,7 +72,7 @@ class Export:
 
 def build_export(mf: MatchFile, plan: TrimPlan, settings: Settings) -> Export:
     remapped, issues = remap_events(mf.events, plan)
-    derived = derive_chapters(mf.events, remapped, settings, plan.total_out_ms, mf.match)
+    derived = derive_chapters(mf.events, remapped, settings, plan.total_out_ms)
     chapters, ch_issues = youtube_chapters(derived, plan.total_out_ms)
     issues += ch_issues
     grouping = chapters or derived

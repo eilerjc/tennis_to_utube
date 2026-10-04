@@ -132,8 +132,8 @@ def default_match(format_preset: str = "standard_mtb") -> dict[str, Any]:
         "kind": "singles",
         "format": {"preset": format_preset},  # scoring.PRESETS name plus any overrides
         "sides": {
-            "A": {"players": [], "role": "ours"},
-            "B": {"players": [], "role": "opponent"},
+            "A": {"players": ["Player 1"], "role": "ours"},
+            "B": {"players": ["Player 2"], "role": "opponent"},
         },
     }
 

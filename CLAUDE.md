@@ -17,10 +17,10 @@ update `DESIGN.md` in the same change.
 
 - `src/tennis_to_utube/` — package. Core modules (no Qt imports): `config`, `matchfile`,
   `catalog` (event type ids), `issues`, `timeline`, `sources` (GoPro ordering), `probe`
-  (ffprobe wrapper), `trim`, `structure` (set/game counting until `flow` exists),
-  `chapters`, `youtube` (export), `shortcuts` (actions + key layout), `names` (default
-  and short player names); planned: `flow`,
-  `scoring`. GUI under `gui/`.
+  (ffprobe wrapper), `trim`, `structure` (simple set/game counting for trim/chapters),
+  `chapters`, `youtube` (export), `shortcuts` (actions + key layout), `names` (player
+  names, rename, short names), `scoring` (score engine), `flow` (state at the playhead).
+  GUI under `gui/` (planned).
 - `tests/` — pytest. Synthetic-video tests generate small HEVC files with ffmpeg that
   mimic the real camera profile (59.94 fps, keyframe every 60 frames, `yuvj420p`).
 

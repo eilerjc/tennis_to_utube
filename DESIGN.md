@@ -77,6 +77,7 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
   ],
   "match": {
     "kind": "singles",     // or "doubles"
+    "format": {"preset": "standard_mtb"},  // §7; plus any overrides, e.g. "ad": false
     "sides": {
       "A": {"players": ["Emma"], "role": "ours"},
       "B": {"players": ["Sara"], "role": "opponent"}
@@ -91,14 +92,13 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
       "id": "e_0001",      // stable id, never reused
       "t_ms": 734512,
       "type": "game_start",
-      "side": "A", "player": "A1",     // who (server here); optional. Players are referred
-                                       // to by position (A1, A2, B1, B2), so renames apply everywhere
+      "side": "A", "player": "Emma",   // who (server here); optional; the name as typed
       "result": null,      // e.g. "A" | "B" | "unknown" for outcome events
       "observed": null,    // [data only] what the video shows: "in"|"out"|"net"|"unclear"...
       "called": null,      // [data only] what was ruled: "in"|"out"|"let"|"replay"|"no_call"
       "source": "human",   // "human" | "ai" | "import"
       "confidence": null,  // [data only] 0..1, for AI
-      "inferred": false,   // set by back-annotation, never by the user
+      "inferred": false,   // reserved; inferred results are derived on the fly, not stored
       "tags": [],          // free labels, e.g. "close", "bad miss"
       "details": {},       // structured qualifiers, e.g. {"direction":"long","margin_cm":6}
       "note": ""
@@ -110,8 +110,11 @@ One JSON file saved next to the video(s), e.g. `GX010008.match.json`.
 ```
 
 - Names are stored and exported **exactly as typed** (usually first names).
-- With no names entered, players show as **Player 1** and **Player 2** (doubles: 1 & 2 on
-  side A, 3 & 4 on side B). These are display defaults, not written to the file.
+- New matches start with **Player 1** and **Player 2** written into the file (doubles: 1 & 2
+  on side A, 3 & 4 on side B; a missing name shows as its default). Events store names.
+  **Renaming** a player is a find/replace over the match file (sides, events, Set score
+  servers) and the app tells the user how many places changed; a name another player
+  already has is refused (agreed with the owner, instead of position references).
 - **Short names** for buttons and tight spots: first 4 letters of the first name + last
   initial ("Alexandra Jones" → "Alex J", "Player 1" → "Play 1"; letter count is a setting).
   Clashes lengthen the part that differs ("Alex Sm" / "Alex Sc"). Exports and the future
@@ -138,10 +141,11 @@ may say "won"/"lost"/"?" but all store the same type.
 - **Set score** `score_state` — score checkpoint, allowed **at any time**, as often as needed
   (video starts mid-match, or the user knows the real score and wants to correct it). Only
   the known parts are entered in `details`; the rest keeps being computed from earlier
-  events, or is unknown. Defined now: `"sets": [[6, 4], ...]` (completed sets, A–B) and
-  `"games": [3, 2]` (current set, taken as between games); points, server and format come
-  with the score engine. From that point the entered score is authoritative; disagreement
-  with what earlier events add up to is an issue.
+  events, or is unknown. Parts: `"sets": [[6, 4], ...]` (completed sets, A–B), `"games":
+  [3, 2]` (current set; without points, taken as between games), `"points": [2, 3]` (counts;
+  the user types "30-40", "AD-40", "deuce", or "5-3" in a tiebreak), `"server"` (a name or a
+  side). From that point the entered score is authoritative; disagreement with what earlier
+  events add up to is an issue. A Set score before anything was scored cannot conflict.
 - **Ending state** `ending_state` — final score from another source (scorebook) when video
   ends early; marked as *entered*, not observed.
 
@@ -188,9 +192,21 @@ may say "won"/"lost"/"?" but all store the same type.
 
 - Scoring may be off, or recorded at **set**, **game** or **point** level, and the level may
   differ across the match. The engine computes whatever the recorded events allow.
-- **Formats:** ad / no-ad; standard sets with tiebreak at 6-6; pro set (to 8); short sets
-  (e.g. to 4); 10-point match tiebreak in place of a final set. Changed mid-match via
-  Rules-change events.
+- **Formats** (`scoring.PRESETS`, stored in `match.format` with any overrides; changed
+  mid-match via Rules-change events):
+
+  | Preset | Sets | Games | Tiebreak | Final set |
+  |---|---|---|---|---|
+  | `standard_mtb` (**default**, agreed) | best of 3 | 6 | at 6–6, to 7 | 10-point match tiebreak |
+  | `standard` | best of 3 | 6 | at 6–6 | normal set |
+  | `best_of_5` | best of 5 | 6 | at 6–6 | normal set |
+  | `pro_set` | 1 | 8 | at 8–8 | — |
+  | `pro10` | 1 | 10 | at 10–10 | — |
+  | `short_sets` | best of 3 | 4 | at 4–4 | 10-point match tiebreak |
+
+  **Ad / no-ad** is a switch on every format (`"ad": false`). Every field (`games`,
+  `tiebreak_at`, `tiebreak_points`, `final_set`, `match_tiebreak_points`, …) can be
+  overridden, e.g. for other short-set variants — or the user just marks set won/lost.
 - **Points ended by a serve** (agreed with the owner): the second `fault` in a point is a
   double fault and wins the point for the receiver; an `ace` wins it for the server. The
   engine awards the point itself (no Point event needed; the GUI shows it awarded at once).
@@ -214,6 +230,14 @@ may say "won"/"lost"/"?" but all store the same type.
   unknown at 2–2, then Set score 4–2 ⇒ both games went to A).
 - Display distinguishes confirmed / inferred / uncertain. Exports only state scores the
   engine is certain of.
+- **How it works:** the engine tracks every score consistent with the log so far (unknown
+  results branch, known results and Set scores prune), then keeps only paths that reach the
+  end. Among those it prefers the most regular reading — a game that ended on points but
+  was not marked before play went on, or a Game start mid-game, counts against a path —
+  so unknowns are not read in improbable ways (e.g. one long deuce game split into two).
+  Inferred results are recomputed on every edit and never overwrite what the user entered.
+  If nothing fits, the event is applied as entered and reported. More than 5000 possible
+  scores at once: tracking stops (issue) until a Set score.
 
 ## 8. Chapters and YouTube export
 

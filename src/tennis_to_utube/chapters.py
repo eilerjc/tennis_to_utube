@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from typing import Any, Iterable, Sequence
+from typing import Iterable, Sequence
 
-from . import catalog, names, structure
+from . import catalog, structure
 from .config import Settings
 from .issues import Issue
 from .matchfile import Event
@@ -35,18 +35,12 @@ class Chapter:
     event_ids: tuple[str, ...] = ()
 
 
-def _player_text(e: Event, match: dict[str, Any] | None) -> str:
-    if not e.player:
-        return ""
-    name = names.player_name(match, e.player) if match is not None else None
-    return f" — {name or e.player} serving"
+def _player_text(e: Event) -> str:
+    return f" — {e.player} serving" if e.player else ""
 
 
-def anchor_titles(events: Iterable[Event], match: dict[str, Any] | None = None) -> dict[str, str]:
-    """Titles for every anchor event, numbered from the whole log (removed parts too).
-
-    ``match`` resolves player references to names (full names, as typed).
-    """
+def anchor_titles(events: Iterable[Event]) -> dict[str, str]:
+    """Titles for every anchor event, numbered from the whole log (removed parts too)."""
     titles = {}
     play_started = False
     for e, pos in structure.walk(events):
@@ -57,7 +51,7 @@ def anchor_titles(events: Iterable[Event], match: dict[str, Any] | None = None) 
             if pos.set_no:
                 parts.append(f"Set {pos.set_no}")
             parts.append(f"Game {pos.game_no}" if pos.game_no else "Game")
-            titles[e.id] = " · ".join(parts) + _player_text(e, match)
+            titles[e.id] = " · ".join(parts) + _player_text(e)
         elif e.type == catalog.SCORE_STATE and not play_started:
             score = structure.score_text(e)
             titles[e.id] = "Match in progress" + (f" ({score})" if score else "")
@@ -66,9 +60,9 @@ def anchor_titles(events: Iterable[Event], match: dict[str, Any] | None = None) 
 
 
 def derive_chapters(events: Sequence[Event], remapped: Sequence[Remapped], settings: Settings,
-                    total_out_ms: int, match: dict[str, Any] | None = None) -> list[Chapter]:
+                    total_out_ms: int) -> list[Chapter]:
     """Chapters on the output timeline, before YouTube's rules are applied."""
-    titles = anchor_titles(events, match)
+    titles = anchor_titles(events)
     kept = sorted(remapped, key=lambda r: r.out_ms)
     anchors = [r for r in kept if r.event.type in catalog.CHAPTER_ANCHORS and r.event.id in titles]
     chapters = [Chapter(r.link_ms(settings.lead_in_for(r.event.type)), r.out_ms,

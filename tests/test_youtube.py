@@ -26,13 +26,13 @@ def match():
     mf.match["sides"]["A"]["players"] = ["Emma"]
     mf.match["sides"]["B"]["players"] = ["Sara"]
     mf.add_event(30_000, "set_start")
-    mf.add_event(31_000, "game_start", player="A1")
+    mf.add_event(31_000, "game_start", player="Emma")
     mf.add_event(40_500, "point", result="A", tags=["close"])
-    mf.add_event(52_900, "ace", player="A1")
-    mf.add_event(150_000, "game_start", player="B1")
+    mf.add_event(52_900, "ace", player="Emma")
+    mf.add_event(150_000, "game_start", player="Sara")
     mf.add_event(170_000, "point", result="unknown")
     mf.add_event(171_000, "body_language", side="B", note="head down")
-    mf.add_event(290_000, "game_start", player="A1")
+    mf.add_event(290_000, "game_start", player="Emma")
     return mf
 
 

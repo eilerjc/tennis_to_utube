@@ -53,11 +53,11 @@ def test_known_fields_are_typed():
 def test_names_kept_exactly_as_typed(tmp_path):
     mf = MatchFile()
     mf.match["sides"]["A"]["players"] = ["Zoë", "Ana-María"]
-    mf.add_event(1000, "game_start", player="A1")
+    mf.add_event(1000, "game_start", player="Zoë")
     save(mf, tmp_path / "m.match.json")
     again = load(tmp_path / "m.match.json")
     assert again.match["sides"]["A"]["players"] == ["Zoë", "Ana-María"]
-    assert again.events[0].player == "A1"  # events refer to players by position
+    assert again.events[0].player == "Zoë"
     assert "Zoë" in (tmp_path / "m.match.json").read_text(encoding="utf-8")
 
 

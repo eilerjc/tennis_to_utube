@@ -1,6 +1,7 @@
 from tennis_to_utube.matchfile import default_match
+from tennis_to_utube.matchfile import MatchFile
 from tennis_to_utube.names import (
-    parse_ref, partner, player_name, players, ref_side, short_names, short_side_names, side_name,
+    partner_of, players, rename_player, short_names, short_side_names, side_name, side_of,
 )
 from tennis_to_utube.shortcuts import ACTIONS_BY_ID
 
@@ -56,11 +57,32 @@ def test_buttons_use_short_names():
     assert ACTIONS_BY_ID["game_end_b"].button_text(labels) == "Game Sara P/Ana L"
 
 
-def test_player_references():
+
+def test_new_matches_store_default_names():
+    assert players(MatchFile().match, "A") == ["Player 1"]
+    assert MatchFile().match["sides"]["B"]["players"] == ["Player 2"]
+
+
+def test_side_and_partner_lookup():
     m = match(["Emma Smith", "Ana Perez"], ["Sara"], kind="doubles")
-    assert player_name(m, "A2") == "Ana Perez"
-    assert player_name(m, "B2") == "Player 4"
-    assert player_name(m, "A3") is None and player_name(m, "Emma") is None
-    assert parse_ref("B2") == ("B", 1) and parse_ref("C1") is None and parse_ref("A0") is None
-    assert ref_side("B1") == "B" and ref_side("A") == "A" and ref_side("x") is None
-    assert partner("A1") == "A2" and partner("B2") == "B1"
+    assert side_of(m, "Ana Perez") == "A" and side_of(m, "Player 4") == "B"
+    assert side_of(m, "B") == "B" and side_of(m, "Nobody") is None and side_of(None, "Emma") is None
+    assert partner_of(m, "Emma Smith") == "Ana Perez" and partner_of(m, "Sara") == "Player 4"
+    assert side_of(match(["Emma"], ["Emma"]), "Emma") is None  # ambiguous
+
+
+def test_rename_is_find_replace():
+    mf = MatchFile()
+    mf.add_event(1, "game_start", player="Player 1")
+    mf.add_event(2, "score_state", details={"server": "Player 1", "games": [1, 0]})
+    mf.add_event(3, "game_start", player="Player 2")
+    assert rename_player(mf, "Player 1", "Emma Smith") == 3
+    assert mf.match["sides"]["A"]["players"] == ["Emma Smith"]
+    assert [e.player for e in mf.events] == ["Emma Smith", None, "Player 2"]
+    assert mf.events[1].details["server"] == "Emma Smith"
+    for bad in (("Nobody", "X"), ("Emma Smith", "Player 2"), ("Emma Smith", "  ")):
+        try:
+            rename_player(mf, *bad)
+        except ValueError:
+            continue
+        raise AssertionError(bad)

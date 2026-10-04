@@ -10,8 +10,8 @@ that reach the end, which gives, for every event, the results consistent with th
 log: exactly one → inferred; more than one → uncertain (listed for video review); none →
 an issue, after which the event is applied anyway (the log is never rejected).
 
-Points are counts (2–1 = 30–15). Players are referred to by position (A1, B2); the engine
-only needs sides.
+Points are counts (2–1 = 30–15). The engine works with sides; player names (servers) are
+looked up in the match to find their side.
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ PRESETS: dict[str, Format] = {
     "standard_mtb": Format(),  # best of 3, 10-point match tiebreak instead of a third set
     "best_of_5": Format(best_of=5, final_set="set"),
     "pro_set": Format(best_of=1, games=8, tiebreak_at=8, final_set="set"),
+    "pro10": Format(best_of=1, games=10, tiebreak_at=10, final_set="set"),
     "short_sets": Format(games=4, tiebreak_at=4),  # to 4, tiebreak at 4-4, match tiebreak
 }
 DEFAULT_PRESET = "standard_mtb"
@@ -235,7 +236,7 @@ class Checkpoint:
     problems: tuple[str, ...]
 
 
-def read_checkpoint(e: Event) -> Checkpoint:
+def read_checkpoint(e: Event, match: dict[str, Any] | None = None) -> Checkpoint:
     d = e.details
     problems = []
     sets = None
@@ -252,7 +253,7 @@ def read_checkpoint(e: Event) -> Checkpoint:
     points = _pair(d.get("points"))
     if "points" in d and points is None:
         problems.append(f"invalid points {d['points']!r}")
-    server = names.ref_side(d.get("server")) if "server" in d else None
+    server = names.side_of(match, d.get("server")) if "server" in d else None
     if "server" in d and server is None:
         problems.append(f"invalid server {d['server']!r}")
     return Checkpoint(sets, games, points, server, tuple(problems))
@@ -302,9 +303,11 @@ OUTCOME_TYPES = (catalog.POINT, catalog.GAME_END, catalog.SET_END)
 class _Info:
     kind: str | None  # POINT_END or None
     tracking: bool  # a scoring event came before this one
+    side: str | None  # side of the event's player (or its side field)
+    checkpoint: Checkpoint | None  # for Set score events
 
 
-def _classify(events: Sequence[Event]) -> list[_Info]:
+def _classify(events: Sequence[Event], match: dict[str, Any] | None) -> list[_Info]:
     out, faults, tracking = [], 0, False
     for e in events:
         kind = None
@@ -313,7 +316,9 @@ def _classify(events: Sequence[Event]) -> list[_Info]:
         elif e.type == catalog.FAULT:
             faults += 1
             kind = POINT_END if faults >= 2 else None
-        out.append(_Info(kind, tracking))
+        side = names.side_of(match, e.player) or names.side_of(match, e.side)
+        cp = read_checkpoint(e, match) if e.type == catalog.SCORE_STATE else None
+        out.append(_Info(kind, tracking, side, cp))
         if kind == POINT_END:
             faults = 0
         if kind == POINT_END or e.type in (catalog.GAME_END, catalog.SET_END):
@@ -376,7 +381,7 @@ def _moves(s: State, e: Event, info: _Info, forced: bool) -> list[tuple[State, s
         return out
 
     if t == catalog.SCORE_STATE:
-        cp = read_checkpoint(e)
+        cp = info.checkpoint
         if not forced and info.tracking and not _fits(s, cp):
             return []  # (before any scoring there is nothing for it to contradict)
         return [(_apply_checkpoint(s, cp, info.tracking), None)]
@@ -386,8 +391,8 @@ def _moves(s: State, e: Event, info: _Info, forced: bool) -> list[tuple[State, s
         return [(replace(s, fmt=fmt), None)]
 
     if t == catalog.GAME_START:
-        side = names.ref_side(e.player) or names.ref_side(e.side)
-        return [(replace(s, server=side or s.server, pending_game=None, pending_set=None), None)]
+        return [(replace(s, server=info.side or s.server, pending_game=None, pending_set=None),
+                 None)]
 
     if t == catalog.SET_START:
         return [(replace(s, pending_game=None, pending_set=None), None)]
@@ -485,9 +490,11 @@ class Analysis:
 MAX_STATES = 5000  # more possible scores than this: give up tracking (score becomes unknown)
 
 
-def analyze(events: Iterable[Event], fmt: Format, duplicate_window_ms: int = 5000) -> Analysis:
+def analyze(events: Iterable[Event], fmt: Format, duplicate_window_ms: int = 5000,
+            match: dict[str, Any] | None = None) -> Analysis:
+    """Score analysis of the log. ``match`` maps player names to sides."""
     evs = sorted(events, key=lambda e: e.t_ms)
-    infos = _classify(evs)
+    infos = _classify(evs, match)
     issues: list[Issue] = []
     initial = State(fmt)
     states: set[State] = {initial}
@@ -495,7 +502,7 @@ def analyze(events: Iterable[Event], fmt: Format, duplicate_window_ms: int = 500
     layers: list[dict[State, set[tuple[State, str | None]]]] = []
 
     for e, info in zip(evs, infos):
-        issues += _pre_issues(e, states)
+        issues += _pre_issues(e, info, states, match)
         trans, best = _advance(states, cost, e, info, forced=False)
         if not trans:
             if all(s.winner for s in states):
@@ -559,7 +566,8 @@ def _conflict_issue(e: Event) -> Issue:
     return Issue("score_conflict", msg + "; applied as entered", e.t_ms, e.id, "warning")
 
 
-def _pre_issues(e: Event, states: set[State]) -> list[Issue]:
+def _pre_issues(e: Event, info: _Info, states: set[State], match: dict[str, Any] | None
+                ) -> list[Issue]:
     """Validation that needs the possible states before an event."""
     out = []
     t = e.type
@@ -567,7 +575,7 @@ def _pre_issues(e: Event, states: set[State]) -> list[Issue]:
         if all(s.points not in ((0, 0), None) and s.pending_game is None for s in states):
             out.append(Issue("game_start_mid_game", "Game start before the previous game finished",
                              e.t_ms, e.id))
-        side = names.ref_side(e.player) or names.ref_side(e.side)
+        side = info.side
         if side and all(s.server == other(side) for s in states):
             out.append(Issue("server_out_of_turn", "Server differs from the expected rotation",
                              e.t_ms, e.id, "info"))
@@ -575,13 +583,14 @@ def _pre_issues(e: Event, states: set[State]) -> list[Issue]:
         out.append(Issue("unexpected_tiebreak", "Tiebreak start, but the score is not at a tiebreak",
                          e.t_ms, e.id, "info"))
     if t == catalog.SCORE_STATE:
-        for p in read_checkpoint(e).problems:
+        for p in info.checkpoint.problems:
             out.append(Issue("invalid_score_state", f"Set score: {p}; ignored", e.t_ms, e.id))
     if t == catalog.RULES_CHANGE:
         for p in patch_format(Format(), e.details.get("format", {}))[1]:
             out.append(Issue("invalid_rules_change", f"Rules change: {p}", e.t_ms, e.id))
-    if e.player is not None and names.parse_ref(e.player) is None:
-        out.append(Issue("unknown_player", f"Unknown player reference {e.player!r}", e.t_ms, e.id))
+    if match is not None and e.player is not None and names.side_of(match, e.player) is None:
+        out.append(Issue("unknown_player", f"{e.player!r} is not a player in this match",
+                         e.t_ms, e.id))
     return out
 
 
@@ -621,6 +630,39 @@ def points_text(view: ScoreView) -> str | None:
             return "40–40"
         return "AD–40" if a > b else "40–AD"
     return f"{_POINT_NAMES[min(a, 3)]}–{_POINT_NAMES[min(b, 3)]}"
+
+
+_POINT_WORDS = {"0": 0, "love": 0, "15": 1, "30": 2, "40": 3}
+
+
+def parse_pair(text: str) -> tuple[int, int] | None:
+    """ "3-2", "3–2", "3:2", "3 2" → (3, 2); None if not two whole numbers."""
+    parts = text.replace("–", "-").replace(":", "-").replace(" ", "-").split("-")
+    parts = [p for p in parts if p]
+    if len(parts) == 2 and all(p.isdigit() for p in parts):
+        return int(parts[0]), int(parts[1])
+    return None
+
+
+def parse_points(text: str, tiebreak: bool = False) -> tuple[int, int] | None:
+    """Score as typed → point counts: "30-40" → (2, 3), "AD-40" → (4, 3), "deuce" → (3, 3),
+    "15-love" → (1, 0); in a tiebreak plain numbers: "5-3" → (5, 3). None if not understood.
+    """
+    t = text.strip().lower()
+    if tiebreak:
+        return parse_pair(t)
+    if t in ("deuce", "40-40", "40–40"):
+        return (3, 3)
+    parts = [p for p in t.replace("–", "-").replace(":", "-").replace(" ", "-").split("-") if p]
+    if len(parts) != 2:
+        return None
+    if "ad" in parts:
+        if parts.count("ad") == 1 and "40" in parts:
+            return (4, 3) if parts[0] == "ad" else (3, 4)
+        return None
+    if all(p in _POINT_WORDS for p in parts):
+        return _POINT_WORDS[parts[0]], _POINT_WORDS[parts[1]]
+    return None
 
 
 def set_text(s: SetScore) -> str:

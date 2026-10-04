@@ -1,10 +1,9 @@
 """Player names: defaults, full side names, and short names for buttons.
 
-Events refer to players by position, not name: ``"A1"``, ``"A2"`` (side A's players in
-the order entered), ``"B1"``, ``"B2"``. Renaming a player therefore updates every event.
-Names are stored and exported exactly as typed. When none were entered, players are
-"Player 1" and "Player 2" (doubles: 1 & 2 on side A, 3 & 4 on side B); these are display
-defaults and are not written to the match file.
+Names are stored (in the match and in events) and exported exactly as typed. New matches
+start with "Player 1" and "Player 2" (doubles: 1 & 2 on side A, 3 & 4 on side B), and any
+missing name shows as its "Player N" default. Renaming is a find/replace over the match
+file (:func:`rename_player`); the app tells the user how many places changed.
 
 Short names (buttons and other tight spots) are the first 4 letters of the first name plus
 the last initial: "Alexandra Jones" → "Alex J", "Player 1" → "Play 1", "Emma" → "Emma".
@@ -30,36 +29,53 @@ def players(match: dict[str, Any], side: str) -> list[str]:
             for i in range(count)]
 
 
-def parse_ref(ref: Any) -> tuple[str, int] | None:
-    """``"B2"`` → ``("B", 1)`` (side, 0-based index); None if not a player reference."""
-    if (isinstance(ref, str) and len(ref) >= 2 and ref[0] in SIDES and ref[1:].isdigit()
-            and int(ref[1:]) >= 1):
-        return ref[0], int(ref[1:]) - 1
-    return None
-
-
-def ref_side(ref: Any) -> str | None:
-    """Side of a player reference, or of a bare side ("A"/"B")."""
-    if ref in SIDES:
-        return ref
-    parsed = parse_ref(ref)
-    return parsed[0] if parsed else None
-
-
-def partner(ref: str) -> str:
-    """Doubles partner: A1 ↔ A2."""
-    side, i = parse_ref(ref)
-    return f"{side}{2 - i}" if i in (0, 1) else ref
-
-
-def player_name(match: dict[str, Any], ref: str) -> str | None:
-    """Full name for a reference ("A1" → "Emma Smith"); None if there is no such player."""
-    parsed = parse_ref(ref)
-    if parsed is None:
+def side_of(match: dict[str, Any] | None, who: Any) -> str | None:
+    """Side of a player name (or of a bare side "A"/"B"); None if unknown or ambiguous."""
+    if who in SIDES:
+        return who
+    if match is None or not isinstance(who, str):
         return None
-    side, i = parsed
-    names = players(match, side)
-    return names[i] if i < len(names) else None
+    found = [side for side in SIDES if who in players(match, side)]
+    return found[0] if len(found) == 1 else None
+
+
+def partner_of(match: dict[str, Any], name: str) -> str | None:
+    """The other player on the same side (doubles)."""
+    side = side_of(match, name)
+    if side is None:
+        return None
+    others = [n for n in players(match, side) if n != name]
+    return others[0] if len(others) == 1 else None
+
+
+def rename_player(mf: Any, old: str, new: str) -> int:
+    """Find/replace a player's name in the match and every event; returns the count.
+
+    Refuses a name another player already has (they could no longer be told apart).
+    """
+    new = new.strip()
+    if not new:
+        raise ValueError("a player needs a name")
+    everyone = [n for side in SIDES for n in players(mf.match, side)]
+    if old not in everyone:
+        raise ValueError(f"no player called {old!r}")
+    if new != old and new in everyone:
+        raise ValueError(f"another player is already called {new!r}")
+    count = 0
+    for side in SIDES:
+        entry = mf.match.setdefault("sides", {}).setdefault(side, {})
+        current = players(mf.match, side)
+        if old in current:
+            entry["players"] = [new if n == old else n for n in current]
+            count += 1
+    for e in mf.events:
+        if e.player == old:
+            e.player = new
+            count += 1
+        if e.details.get("server") == old:
+            e.details["server"] = new
+            count += 1
+    return count
 
 
 def side_name(match: dict[str, Any], side: str) -> str:
