@@ -420,6 +420,9 @@ Runs from source for now: `run.bat` sets up `.venv` on first use (one-click .exe
 6. GUI: file browser panel, mpv player, controls, timeline bars, event buttons, issues list,
    trim pass screen, export screen.
 
+Status (2026-10-04): steps 1–5 merged; step 6 built (all screens) and tested offscreen —
+awaiting the owner's check on Windows.
+
 **Testing:** pure-Python unit tests for everything in 1–5. End-to-end trim tests on
 **synthetic video matching the real profile** (`libx265`, `60000/1001`, keyint 60,
 `yuvj420p`, 3840×2160 or scaled-down equivalent, split into GoPro-style chapter files), with
