@@ -536,7 +536,8 @@ marks; shot stats only count marked shots.
 Status (2026-10-04): steps 1–5 merged; step 6 built (all screens) and tested offscreen —
 awaiting the owner's check on Windows.
 Overlay tool (§9a) built 2026-10-04 (command line), tested with libx265 on synthetic video;
-NVENC to verify on the owner's PC (needs a driver new enough for the ffmpeg build).
+NVENC checked on the owner's PC (driver 617, ffmpeg 9.0.2): 4K59.94 at ~1.8× real time
+(an 83-min match ≈ 45 min). ffmpeg 9's NVENC needs driver 610+.
 
 **Testing:** pure-Python unit tests for everything in 1–5. End-to-end trim tests on
 **synthetic video matching the real profile** (`libx265`, `60000/1001`, keyint 60,
