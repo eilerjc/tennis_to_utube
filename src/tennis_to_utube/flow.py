@@ -12,7 +12,7 @@ from typing import Any
 from . import catalog, names
 from .config import Config
 from .matchfile import MatchFile
-from .scoring import Analysis, ScoreView, analyze, resolve_format
+from .scoring import SHOT_TYPES, Analysis, ScoreView, analyze, resolve_format
 
 
 def analyze_match(mf: MatchFile, config: Config | None = None) -> Analysis:
@@ -32,19 +32,29 @@ class Flow:
     next_server: str | None  # side expected to serve the next game
     next_server_player: str | None  # name of the expected server (None if not known)
 
+    serve_pending: bool = False  # a Serve was just marked: its call (fault/let/ace) may follow
+
     def suggested(self) -> list[str]:
         """Action ids to put forward (others stay available, e.g. via the menu)."""
         if self.match_over:
             return ["match_end"]
         if self.set_can_end:
             return ["set_end_a", "set_end_b", "set_end_unknown"]
+        if self.in_game and self.serve_pending:
+            return ["fault", "let", "ace", "point_a", "point_b", "point_unknown"]
         if self.in_game:  # serves stay available but are not pushed (optional finer level)
             return ["point_a", "point_b", "point_unknown",
                     "game_end_a", "game_end_b", "game_end_unknown"]
         return ["game_start", "game_start_other_server", "set_start"]
 
 
-def flow_at(analysis: Analysis, match: dict[str, Any], t_ms: int) -> Flow:
+# Marks that belong to a point (the latest one tells whether a serve is waiting for its call).
+_POINT_MARKS = frozenset({catalog.POINT, catalog.ACE, catalog.FAULT, catalog.SERVE_IN,
+                          catalog.LET, *SHOT_TYPES})
+
+
+def flow_at(analysis: Analysis, match: dict[str, Any], t_ms: int,
+            serve_call_window_ms: int = 6000) -> Flow:
     steps = [st for st in analysis.steps if st.event.t_ms <= t_ms]
     view = steps[-1].view if steps else analysis.initial
     in_game = False
@@ -54,6 +64,9 @@ def flow_at(analysis: Analysis, match: dict[str, Any], t_ms: int) -> Flow:
         elif st.event.type in (catalog.GAME_END, catalog.SET_END):
             in_game = False
     side = view.server
+    point_marks = [st.event for st in steps if st.event.type in _POINT_MARKS]
+    serve_pending = (bool(point_marks) and point_marks[-1].type == catalog.SERVE_IN
+                     and t_ms - point_marks[-1].t_ms <= serve_call_window_ms)
     return Flow(
         score=view,
         in_game=in_game,
@@ -61,6 +74,7 @@ def flow_at(analysis: Analysis, match: dict[str, Any], t_ms: int) -> Flow:
         match_over=view.winner is not None,
         next_server=side,
         next_server_player=_predict_player(steps, match, side),
+        serve_pending=serve_pending,
     )
 
 

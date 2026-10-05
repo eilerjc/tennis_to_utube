@@ -114,6 +114,25 @@ def test_marking_with_keys_updates_score_and_suggestions(window):
     assert flow.score.games == (1, 0)
 
 
+def test_serve_then_the_call(window):
+    page = window.mark
+    page.player.seek(1_000)
+    page.actions["game_start"].trigger()
+    assert page.buttons.buttons["serve_in"].text().splitlines()[0] == "Serve"
+    page.player.seek(2_000)
+    page.actions["serve_in"].trigger()
+    serve_id = page.selected_id
+    assert page.buttons.buttons["fault"].styleSheet()  # the call is suggested
+    messages = []
+    page.message.connect(messages.append)
+    page.player.seek(4_000)
+    page.actions["fault"].trigger()
+    e = page.session.event(serve_id)
+    assert (page.selected_id, e.type, e.t_ms) == (serve_id, "fault", 2_000)
+    assert messages == ["Serve at 0:00:02.000 is now Fault"]
+    assert not page.buttons.buttons["fault"].styleSheet()
+
+
 def test_reaction_offset_while_playing(window):
     page = window.mark
     page.player.seek(10_000)
