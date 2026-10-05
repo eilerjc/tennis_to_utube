@@ -186,6 +186,14 @@ may say "won"/"lost"/"?" but all store the same type.
   is two faults in the same point (no separate type). A logged serve gives the exact point
   start time. The second fault and an ace **end the point by themselves** (see §7); no Point
   press is needed after them.
+- **Serve, then the call** (agreed with the owner, 2026-10-04): **Serve** (`Q`, stored as
+  `serve_in`) is pressed when the ball is struck. Close serves can't be judged on video and
+  the players' call comes later, so a **Fault, Let or Ace** pressed within
+  `scoring.serve_call_window_ms` (default 6 s) after a Serve — with no point mark in
+  between — **changes that serve** into a fault/let/ace, keeping its contact time (one undo
+  step). Otherwise the serve stays in. A call with no Serve waiting is a mark of its own
+  at the press time (marking without serves works as before). While a serve waits for its
+  call, Fault/Let/Ace and the Point buttons are lit. Double fault: `Q W Q W`.
 
 **Shot** (optional finer level; buttons only, no keys)
 - Winner `winner`, forced error `forced_error`, unforced error `unforced_error`, one button
@@ -424,7 +432,7 @@ Every button with a key shows it on a second line, e.g. `Play / Pause` over `[Sp
   | Keys | Action |
   |---|---|
   | `A` `S` `D` | Point: A / B / unknown |
-  | `Q` `W` `E` `R` | Serve in, Fault, Let, Ace |
+  | `Q` `W` `E` `R` | Serve (at contact), Fault, Let, Ace (soon after a Serve: its call, §5) |
   | `G` / `Shift+G` | Game start with the predicted / the other server |
   | `Z` `X` `C` | Game end: A / B / unknown |
   | `Shift+Z` `Shift+X` `Shift+C` | Set end: A / B / unknown |
