@@ -106,3 +106,25 @@ def test_trim_example_matches_the_defaults():
 
     example = Path(__file__).parent.parent / "docs" / "trim.example.toml"
     assert tomllib.loads(example.read_text(encoding="utf-8")) == TRIM_DEFAULTS
+
+
+def test_overlay_example_matches_the_defaults():
+    import tomllib
+    from pathlib import Path
+
+    from tennis_to_utube.config import OVERLAY_DEFAULTS
+
+    example = Path(__file__).parent.parent / "docs" / "overlay.example.toml"
+    assert tomllib.loads(example.read_text(encoding="utf-8")) == OVERLAY_DEFAULTS
+
+
+def test_overlay_config_is_its_own_file(tmp_path):
+    from tennis_to_utube.config import load_overlay_config
+
+    path = tmp_path / "overlay.toml"
+    path.write_text('points = "on"\n[board]\ncorner = "top_right"\n[encode]\nhwaccel = ""\n',
+                    encoding="utf-8")
+    cfg = load_overlay_config(path)
+    assert cfg.get("points") == "on" and cfg.get("board.corner") == "top_right"
+    assert cfg.get("encode.hwaccel") == "" and cfg.get("encode.encoder") == "hevc_nvenc"
+    assert cfg.warnings == []

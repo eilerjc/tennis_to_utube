@@ -14,6 +14,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 gui = ["PySide6>=6.6", "python-mpv>=1.0"]
+overlay = ["Pillow>=10.1"]
 
 [project.gui-scripts]
 tennis-to-utube = "tennis_to_utube.gui.app:main"

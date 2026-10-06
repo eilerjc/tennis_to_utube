@@ -5,7 +5,7 @@ if not exist .venv\Scripts\python.exe (
     echo Setting up Python environment, this takes a minute...
     py -3 -m venv .venv || python -m venv .venv || goto :nopython
     .venv\Scripts\python -m pip install --upgrade pip
-    .venv\Scripts\python -m pip install -e .[gui] || goto :failed
+    .venv\Scripts\python -m pip install -e .[gui,overlay] || goto :failed
 )
 .venv\Scripts\python -m tennis_to_utube %*
 if errorlevel 1 pause

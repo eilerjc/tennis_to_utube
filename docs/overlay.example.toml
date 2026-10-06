@@ -1,0 +1,37 @@
+# Overlay tool settings (burned-in scoreboard). Copy to %APPDATA%\tennis_to_utube\overlay.toml
+# and keep only the lines you want to change (everything else uses these defaults).
+
+# Points column (0/15/30/40/AD): "auto" shows it when the match has point marks
+# (Point, ace, fault, shot buttons); "on" or "off" to choose.
+points = "auto"
+
+# The board changes this long after the mark that changed the score.
+update_delay_ms = 0
+
+[board]
+corner = "top_left"     # top_left, top_right, bottom_left, bottom_right
+margin = 0.03           # gap to the video edges, as a fraction of the video height
+row_height = 0.034      # one player row, as a fraction of the video height (73 px at 4K)
+font = "arialbd.ttf"    # a font file, or a name in C:\Windows\Fonts
+background = "#002D72"  # US Open blue
+text = "#FFFFFF"
+dim_text = "#9DB0D3"    # games of a completed set's loser
+accent = "#FFD200"      # US Open yellow: points column, server ball, winner's name
+accent_text = "#002D72"
+opacity = 0.92
+
+[encode]
+# NVENC on the NVIDIA card. Needs a driver new enough for your ffmpeg (ffmpeg says so if
+# not); "libx265" works without one but is much slower.
+encoder = "hevc_nvenc"
+# Constant quality: lower -cq = better and bigger (the camera's files are ~40 Mbps).
+args = ["-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", "21", "-b:v", "0"]
+pix_fmt = "yuv420p"
+hwaccel = "cuda"        # "" decodes on the CPU
+
+[output]
+# File names next to the match file ({stem} = the match name).
+trimmed = "{stem} trimmed overlay.mp4"
+full = "{stem} overlay.mp4"
+preview = "{stem} overlay preview.mp4"
+png = "{stem} overlay board.png"

@@ -19,7 +19,8 @@ chapters and per-event links. See `DESIGN.md` for the agreed design.
 4. Double-click **`run.bat`**. The first start creates `.venv` and installs what is needed.
 
 Settings can be overridden in `%APPDATA%\tennis_to_utube\`: `config.toml` (the app),
-`shortcuts.toml` (keys) and `trim.toml` (the Trim tool — copy `docs\trim.example.toml`);
+`shortcuts.toml` (keys), `trim.toml` (the Trim tool — copy `docs\trim.example.toml`) and
+`overlay.toml` (the Overlay tool — copy `docs\overlay.example.toml`);
 see `src/tennis_to_utube/config.py` and `shortcuts.py`.
 
 ## Using it
@@ -54,6 +55,19 @@ the match file. `--cuts` lists the cuts only; `--links-only --video-id <link>` r
 links once the trimmed video is on YouTube. Its settings — what is cut, the serve lead-in,
 the trimmed video's link lead-ins — are in `trim.toml` (see `docs\trim.example.toml`).
 
+## Scoreboard overlay
+
+Drop a `.match.json` file on `overlay.bat` (or `python -m tennis_to_utube.overlay
+file.match.json`): it burns a US Open style scoreboard (names, every set, games, points,
+server) into the trimmed video and writes `<match> trimmed overlay.mp4`. `--full` does the
+full recording instead (`<match> overlay.mp4`). This re-encodes the video (NVENC on the
+NVIDIA card), so it takes a while; try `--preview 1:02:30` (20 s from that time) or
+`--png 1:02:30` (just the board) first. Upload the overlay video **instead of** the plain
+one: the timing is the same, so it uses the same chapters and links — paste its YouTube
+link where you would paste the plain video's. Settings (look, place, encoder) are in
+`overlay.toml` (see `docs\overlay.example.toml`). NVENC needs an NVIDIA driver new enough
+for your ffmpeg; the tool says so if it isn't.
+
 ## Statistics
 
 Drop a `.match.json` file on `stats.bat` (or run
@@ -66,7 +80,7 @@ of a Point describes that point instead of ending a new one.
 ## Development
 
 ```
-python -m pip install -e .[dev,gui]
+python -m pip install -e .[dev,gui,overlay]
 python -m pytest
 ```
 Tests marked `ffmpeg` need ffmpeg with libx265; tests marked `gui` need PySide6 and run
