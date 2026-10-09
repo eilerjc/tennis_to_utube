@@ -39,6 +39,7 @@ you go; `Ctrl+Z` undoes. Buttons lit green are what the score expects next.
 | `Q` | **Serve** — press when the ball is struck |
 | `W` `E` `R` | **Fault / Let / Ace** — press when the call comes. Within 6 s of a Serve it changes that serve; with no call the serve counts as in. Double fault: `Q W Q W` |
 | `A` `S` `D` | Point to side A / side B / not sure (at the end of the point) |
+| `F` | **Let point** — a let during the rally (e.g. a ball rolls onto the court): the point is replayed from the first serve |
 | `Z` `X` `C` | Game end A / B / ? (optional when you mark every point) |
 | `T`, `Shift+T` | Set start, Set score… (type the real score when the video starts mid-match or something is off) |
 | `1`–`6` | Coaching marks: good recovery, footwork, body language, late contact, strategy, note |
