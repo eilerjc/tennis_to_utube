@@ -3,6 +3,9 @@
 Mark tennis match video (GoPro), keep score, trim/join losslessly, and export YouTube
 chapters and per-event links. See `DESIGN.md` for the agreed design.
 
+**New here? Start with [docs/QUICKSTART.md](docs/QUICKSTART.md)** — setup, marking keys,
+trimming, the scoreboard overlay and uploading, on one page.
+
 ## Running on Windows
 
 1. Install **Python 3.11+** from https://www.python.org/downloads/ (tick "Add to PATH").
