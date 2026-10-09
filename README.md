@@ -28,8 +28,10 @@ see `src/tennis_to_utube/config.py` and `shortcuts.py`.
    videos (GoPro chapters are put in order), type the players, pick the format, **Create
    match**. Or open a match file already in the folder.
 2. **Mark** — play the video and press keys (or click buttons) as things happen. Left hand:
-   `A S D` point (side A / B / unknown), `Q W E R` serve in / fault / let / ace, `G` game
-   start (`Shift+G` other server), `Z X C` game end, `Shift+Z X C` set end, `T` set start,
+   `A S D` point (side A / B / unknown), `F` let point (replayed, first serve again),
+   `Q` serve (when the ball is struck), then `W E R` fault / let / ace for the call
+   (within 6 s it changes that serve; otherwise the serve counts as in), `G` game start
+   (`Shift+G` other server), `Z X C` game end, `Shift+Z X C` set end, `T` set start,
    `Shift+T` set score, `1`–`6` coaching marks and note. Right hand: `Space` play/pause,
    arrows skip 5 s (`Shift` 1 s), `Ctrl+arrows` frame step, `↑ ↓` previous/next mark.
    Green buttons are what the score expects next. Marks made while playing are moved 0.2 s

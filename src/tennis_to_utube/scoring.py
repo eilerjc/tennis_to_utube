@@ -360,6 +360,8 @@ def _classify(events: Sequence[Event], match: dict[str, Any] | None) -> list[_In
         elif e.type == catalog.FAULT:
             faults += 1
             kind = POINT_END if faults >= 2 else None
+        elif e.type == catalog.LET_POINT:
+            faults = 0  # the point is replayed from the first serve
         side = names.side_of(match, e.player) or names.side_of(match, e.side)
         cp = read_checkpoint(e, match) if e.type == catalog.SCORE_STATE else None
         out.append(_Info(kind, tracking, side, cp))
@@ -659,8 +661,8 @@ def _duplicate_points(evs: Sequence[Event], infos: Sequence[_Info], window_ms: i
     after a Point (one the shot could not describe), with no serve between."""
     out, serve_end, point_end = [], None, None
     for e, info in zip(evs, infos):
-        if e.type in (catalog.SERVE_IN, catalog.LET) or (e.type == catalog.FAULT
-                                                          and info.kind is None):
+        if e.type in (catalog.SERVE_IN, catalog.LET, catalog.LET_POINT) or (
+                e.type == catalog.FAULT and info.kind is None):
             serve_end = point_end = None
         elif e.type in SHOT_TYPES and point_end is not None and e.t_ms - point_end <= window_ms:
             out.append(Issue("possible_duplicate_point",

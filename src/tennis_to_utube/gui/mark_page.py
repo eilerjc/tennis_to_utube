@@ -341,10 +341,14 @@ class MarkPage(QWidget):
         if self.session is None:
             return
         t = self.mark_time() if t is None else t
+        before = {ev.id for ev in self.session.mf.events}
         e = self.session.mark(action_id, t, **extra)
         self.selected_id = e.id
         action_type = ACTIONS_BY_ID[action_id].event_type
-        if action_type != e.type:  # a shot added to the Point just marked
+        if e.id in before and e.type == action_type:  # the call for the Serve just marked
+            self._after_edit(f"Serve at {playback.clock_text(e.t_ms)} is now "
+                             f"{catalog.label(e.type)}")
+        elif action_type != e.type:  # a shot added to the Point just marked
             self._after_edit(f"{catalog.label(action_type)} added to the Point at "
                              f"{playback.clock_text(e.t_ms)}")
         else:

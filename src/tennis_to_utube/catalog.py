@@ -23,6 +23,9 @@ ENDING_STATE = "ending_state"  # final score from another source (scorebook), en
 
 # Points
 POINT = "point"  # result: "A" | "B" | "unknown"
+# A let during the rally (e.g. a ball rolling onto the court): the point is replayed from
+# the first serve. Nobody wins it; faults earlier in the point no longer count.
+LET_POINT = "let_point"
 
 # Serve. First vs second serve is derived (a fault earlier in the same point); a double
 # fault is two faults in the same point.
@@ -57,6 +60,7 @@ LABELS: dict[str, str] = {
     SCORE_STATE: "Set score",
     ENDING_STATE: "Ending state",
     POINT: "Point",
+    LET_POINT: "Let point",
     SERVE_IN: "Serve in",
     FAULT: "Fault",
     LET: "Let",

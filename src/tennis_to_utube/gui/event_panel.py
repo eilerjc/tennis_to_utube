@@ -20,7 +20,7 @@ from .actions import call, key_text
 
 # Button rows, mirroring the keyboard rows (DESIGN.md §11).
 BUTTON_ROWS: list[tuple[str, list[str]]] = [
-    ("Points", ["point_a", "point_b", "point_unknown"]),
+    ("Points", ["point_a", "point_b", "point_unknown", "let_point"]),
     ("Serve", ["serve_in", "fault", "let", "ace", "set_server"]),
     ("Shots (end the point)", ["winner_a", "forced_error_a", "unforced_error_a",
                                "winner_b", "forced_error_b", "unforced_error_b"]),

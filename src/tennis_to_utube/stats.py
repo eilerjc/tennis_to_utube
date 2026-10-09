@@ -8,7 +8,8 @@ as in the app. What can be counted depends on what was marked:
 * points (+ who serves, from Game start): points won on serve/return, holds/breaks,
   break points; in tiebreaks, minibreaks (points won on return / lost on serve);
 * serve marks (serve in / fault / ace): 1st-serve %, 1st/2nd-serve points won, aces,
-  double faults (2nd-serve stats only count points with serve marks);
+  double faults (2nd-serve stats only count points with serve marks); serves before a
+  Let point (the point is replayed) do not count;
 * shot marks (on their own or on a Point): winners, forced and unforced errors (by the
   player who hit them).
 
@@ -61,6 +62,7 @@ class GameRecord:
 class Records:
     points: list[PointRecord] = field(default_factory=list)
     games: list[GameRecord] = field(default_factory=list)
+    replays: list[int | None] = field(default_factory=list)  # set number of each Let point
 
 
 def _set_no(v: ScoreView) -> int | None:
@@ -88,6 +90,9 @@ def records(mf: matchfile.MatchFile, analysis: Analysis) -> Records:
             side = names.side_of(match, e.player) or names.side_of(match, e.side)
             if side:
                 game_player[side] = e.player
+        if e.type == catalog.LET_POINT:  # replayed: the attempt's serves do not count
+            out.replays.append(_set_no(prev))
+            serve_marked, faults = False, 0
         if e.type in SERVE_MARKS:
             serve_marked = True
         ended = (e.type in (catalog.POINT, catalog.ACE) or e.type in SHOT_TYPES
@@ -131,7 +136,8 @@ def _ratio(made: int, of: int) -> str:
     return f"{made}/{of} ({round(100 * made / of)}%)" if of else "0/0"
 
 
-def _side_rows(points: Sequence[PointRecord], games: Sequence[GameRecord]) -> list[tuple[str, dict[str, str]]]:
+def _side_rows(points: Sequence[PointRecord], games: Sequence[GameRecord],
+               replays: int = 0) -> list[tuple[str, dict[str, str]]]:
     """(stat, {side: value}) for one section."""
     known = [p for p in points if p.winner is not None]
     rows: list[tuple[str, dict[str, str]]] = []
@@ -170,6 +176,7 @@ def _side_rows(points: Sequence[PointRecord], games: Sequence[GameRecord]) -> li
         add(label, lambda s, t=shot_type: str(sum(p.shot == (t, s) for p in points)))
     unknown = sum(p.winner is None for p in points)
     rows.append(("Points with unknown winner (not counted)", {"A": str(unknown), "B": ""}))
+    rows.append(("Points replayed (let point; serves not counted)", {"A": str(replays), "B": ""}))
     return rows
 
 
@@ -181,11 +188,12 @@ def stats_csv(mf: matchfile.MatchFile, analysis: Analysis | None = None) -> str:
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(["Section", "Stat", names.side_name(match, "A"), names.side_name(match, "B")])
     sets = sorted({p.set_no for p in rec.points if p.set_no} | {g.set_no for g in rec.games if g.set_no})
-    sections = [("Match", rec.points, rec.games)] + [
-        (f"Set {n}", [p for p in rec.points if p.set_no == n], [g for g in rec.games if g.set_no == n])
+    sections = [("Match", rec.points, rec.games, len(rec.replays))] + [
+        (f"Set {n}", [p for p in rec.points if p.set_no == n], [g for g in rec.games if g.set_no == n],
+         rec.replays.count(n))
         for n in sets]
-    for title, points, games in sections:
-        for stat, values in _side_rows(points, games):
+    for title, points, games, replays in sections:
+        for stat, values in _side_rows(points, games, replays):
             w.writerow([title, stat, values["A"], values["B"]])
     # per server (useful in doubles; one row per player)
     by_player: dict[str, list[PointRecord]] = defaultdict(list)

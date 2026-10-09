@@ -564,3 +564,28 @@ def test_server_only_set_score_keeps_the_score():
     log.points("ab")
     _, view = final(log.events)
     assert (view.sets, view.games, view.points, view.server) == ((), (0, 0), (1, 1), "A")
+
+
+def test_let_point_replays_the_point_from_the_first_serve():
+    log = Log()
+    log("game_start", side="A")
+    log("fault")  # first serve out
+    log("serve_in")  # second serve in, then a ball rolls on: replay
+    log("let_point")
+    log("fault")  # a first serve again: not a double fault
+    an, v = final(log.events)
+    assert v.points == (0, 0) and not an.issues
+    log("fault")  # now the double fault
+    an, v = final(log.events)
+    assert v.points == (0, 1)
+
+
+def test_let_point_separates_points_for_the_duplicate_check():
+    log = Log()
+    log("game_start", side="A")
+    log("ace")
+    log("let_point")  # (an odd place for it, but it is a new attempt)
+    log("point", result="A")
+    an, v = final(log.events)
+    assert v.points == (2, 0)
+    assert [i.code for i in an.issues] == []

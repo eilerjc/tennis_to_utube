@@ -184,6 +184,56 @@ def test_shot_shortly_after_a_point_describes_it(tmp_path):
     assert s.mark("unforced_error_a", 22_000).type == "unforced_error"
 
 
+def test_call_after_a_serve_changes_that_serve(tmp_path):
+    s = session(tmp_path)
+    s.set_server(500, "Emma")
+    s.mark("game_start", 1000)
+    serve = s.mark("serve_in", 2000)  # at contact
+    assert serve.side == "A" and s.flow_at(2500).serve_pending
+    e = s.mark("fault", 4500)  # the call, 2.5 s later: the serve was a fault
+    assert e.id == serve.id and (e.type, e.t_ms, e.side) == ("fault", 2000, "A")
+    assert len(s.mf.events) == 3 and not s.flow_at(5000).serve_pending  # Set server, Game start, serve
+    assert s.undo() and s.event(serve.id).type == "serve_in"  # one undo step
+    s.redo()
+    # second serve, called out too: a double fault, point to the receiver
+    s.mark("serve_in", 8000)
+    s.mark("fault", 9000)
+    assert s.flow_at(9500).score.points == (0, 1)
+    # a let, then the serve again, then an ace
+    s.mark("serve_in", 15_000)
+    assert s.mark("let", 16_000).t_ms == 15_000
+    s.mark("serve_in", 20_000)
+    assert s.mark("ace", 21_000).t_ms == 20_000
+    assert s.flow_at(22_000).score.points == (1, 1)
+    assert [e.type for e in s.mf.events].count("serve_in") == 0
+
+
+def test_let_point_then_a_first_serve_again(tmp_path):
+    s = session(tmp_path)
+    s.set_server(500, "Emma")
+    s.mark("game_start", 1000)
+    s.mark("serve_in", 2000)
+    s.mark("fault", 3000)  # first serve: fault
+    s.mark("serve_in", 5000)  # second serve in, rally interrupted
+    lp = s.mark("let_point", 9000)
+    assert lp.type == "let_point" and lp.t_ms == 9000
+    assert not s.flow_at(9500).serve_pending
+    assert s.mark("fault", 10_000).t_ms == 10_000  # no serve waiting: its own mark...
+    assert s.flow_at(10_500).score.points == (0, 0)  # ...and a first-serve fault, not a double
+
+
+def test_call_without_a_waiting_serve_is_its_own_mark(tmp_path):
+    s = session(tmp_path)
+    s.mark("game_start", 1000)
+    assert s.mark("fault", 2000).t_ms == 2000  # serves not marked: as before
+    s.mark("serve_in", 5000)
+    assert s.mark("fault", 11_001).t_ms == 11_001  # later than the 6 s window
+    s.mark("serve_in", 20_000)
+    s.mark("point_a", 25_000)
+    assert s.mark("ace", 26_000).t_ms == 26_000  # the point ended in between
+    assert not s.flow_at(26_500).serve_pending
+
+
 def test_shot_sets_an_unknown_point_winner(tmp_path):
     s = session(tmp_path)
     p = s.mark("point_unknown", 1000)

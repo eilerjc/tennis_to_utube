@@ -24,9 +24,12 @@ from .trim import RULES, SERVE_LEAD_IN_MS, Cut, KeyframeLookup, TrimPlan, plan_f
 
 MAX_UNDO = 500
 SHOT_MODIFIER_WINDOW_MS = 3000
+SERVE_CALL_WINDOW_MS = 6000
+_SERVE_CALLS = (catalog.FAULT, catalog.LET, catalog.ACE)
 # Marks that belong to a point: the latest one before a shot press decides whether the shot
 # describes the last Point (a serve mark means a new point has started).
-_POINT_MARKS = (catalog.POINT, catalog.ACE, catalog.FAULT, catalog.SERVE_IN, catalog.LET, *SHOT_TYPES)
+_POINT_MARKS = (catalog.POINT, catalog.ACE, catalog.FAULT, catalog.SERVE_IN, catalog.LET,
+                catalog.LET_POINT, *SHOT_TYPES)
 
 
 class LockedError(RuntimeError):
@@ -56,7 +59,11 @@ class Session:
         return self._analysis
 
     def flow_at(self, t_ms: int) -> Flow:
-        return flow_at(self.analysis, self.mf.match, t_ms)
+        return flow_at(self.analysis, self.mf.match, t_ms, self._serve_call_window_ms())
+
+    def _serve_call_window_ms(self) -> int:
+        return (self.config.get("scoring.serve_call_window_ms") if self.config
+                else SERVE_CALL_WINDOW_MS)
 
     def event(self, event_id: str) -> Event:
         return self.mf.event(event_id)
@@ -292,6 +299,10 @@ class Session:
         action = ACTIONS_BY_ID[action_id]
         if action.event_type is None:
             raise ValueError(f"{action_id} does not log an event")
+        if action.event_type in _SERVE_CALLS and not self.locked:
+            serve = self.serve_call_target(t_ms)
+            if serve is not None:
+                return self.update(serve.id, type=action.event_type)
         if action.event_type in SHOT_TYPES and action.side is not None and not self.locked:
             point = self.shot_modifier_target(t_ms, action.event_type, action.side)
             if point is not None:
@@ -316,6 +327,18 @@ class Session:
                     fields["player"] = names.players(match, side)[0]
         fields.update(extra)
         return self.add(t_ms, action.event_type, **fields)
+
+    def serve_call_target(self, t_ms: int) -> Event | None:
+        """The Serve a Fault/Let/Ace pressed at ``t_ms`` is the call for: the last point mark
+        before it is a Serve (in) at most the serve-call window earlier. None means the
+        call is a mark of its own."""
+        marks = [e for e in self.mf.events if e.type in _POINT_MARKS and e.t_ms <= t_ms]
+        if not marks:
+            return None
+        last = max(marks, key=lambda e: e.t_ms)
+        if last.type != catalog.SERVE_IN or t_ms - last.t_ms > self._serve_call_window_ms():
+            return None
+        return last
 
     def shot_modifier_target(self, t_ms: int, shot: str, hitter: str) -> Event | None:
         """The Point a shot pressed at ``t_ms`` describes: the last point mark before it is a

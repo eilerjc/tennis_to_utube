@@ -93,8 +93,11 @@ ACTIONS: tuple[Action, ...] = (
     _ev("point_a", "Point {A}", "point", ("A",), catalog.POINT, "A"),
     _ev("point_b", "Point {B}", "point", ("S",), catalog.POINT, "B"),
     _ev("point_unknown", "Point ?", "point", ("D",), catalog.POINT, "unknown"),
+    # A let during the rally: the point is replayed (first serve again)
+    _ev("let_point", "Let point", "point", ("F",), catalog.LET_POINT),
     # Serve: top row
-    _ev("serve_in", "Serve in", "serve", ("Q",), catalog.SERVE_IN),
+    # Serve at contact; Fault/Let/Ace pressed soon after change that serve (the call)
+    _ev("serve_in", "Serve", "serve", ("Q",), catalog.SERVE_IN),
     _ev("fault", "Fault", "serve", ("W",), catalog.FAULT),
     _ev("let", "Let", "serve", ("E",), catalog.LET),
     _ev("ace", "Ace", "serve", ("R",), catalog.ACE),

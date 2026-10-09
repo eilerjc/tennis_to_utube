@@ -45,6 +45,9 @@ DEFAULTS: dict[str, Any] = {
         # A shot button (winner/error) pressed this soon after a Point describes that point
         # instead of ending a new one.
         "shot_modifier_window_ms": 3000,
+        # Fault, Let or Ace pressed this soon after a Serve (and nothing marked in between)
+        # turns that serve into a fault/let/ace: press Serve at contact, then the call.
+        "serve_call_window_ms": 6000,
     },
     # Short player names on buttons: first N letters of the first name + last initial.
     "names": {"short_first_letters": 4},
