@@ -179,6 +179,10 @@ may say "won"/"lost"/"?" but all store the same type.
 
 **Points** (one press per point, at the end of the point)
 - Point `point`, won by A / B / **unknown** (can't see ball, can't hear call/score)
+- **Let point** `let_point` (agreed with the owner, 2026-10-09; key `F`): a let during the
+  rally (e.g. a ball rolling onto the court). The point is **replayed from the first
+  serve**: nobody wins it, and faults earlier in the point no longer count. Not the serve
+  Let (`E`), which replays only that serve.
 
 **Serve** (optional finer level)
 - Serve in `serve_in`, fault `fault`, let `let`, ace `ace`. First vs second serve is
@@ -258,7 +262,8 @@ may say "won"/"lost"/"?" but all store the same type.
   short window after such a point (setting, default ~5 s) with no serve in between is not
   merged silently: it is an issue, "possible duplicate point", for the user to keep or delete.
   Points are delimited by point-ending events (Point, second fault, ace); a `let` is not a
-  fault. Logging serves stays optional — without them, Point is pressed as usual.
+  fault. A **Let point** also closes the attempt, without a winner: the fault count resets
+  (the next serve is a first serve) and the score does not change. Logging serves stays optional — without them, Point is pressed as usual.
 - **Server tracking:** singles and **doubles from the start**. App predicts next server
   (including tiebreak rotation and fixed doubles partner order per set); user confirms with
   one press. While the server is **not known yet** (first game), `G` pops a quick "Who
@@ -432,6 +437,7 @@ Every button with a key shows it on a second line, e.g. `Play / Pause` over `[Sp
   | Keys | Action |
   |---|---|
   | `A` `S` `D` | Point: A / B / unknown |
+  | `F` | Let point (replay the point, first serve again) |
   | `Q` `W` `E` `R` | Serve (at contact), Fault, Let, Ace (soon after a Serve: its call, §5) |
   | `G` / `Shift+G` | Game start with the predicted / the other server |
   | `Z` `X` `C` | Game end: A / B / unknown |
@@ -479,7 +485,8 @@ Stats: points won, service/return points won, 1st serve in, 1st/2nd serve points
 double faults, break points won/saved (not in tiebreaks), tiebreak points won, minibreaks
 won (tiebreak points won on return) and lost (tiebreak points lost on serve),
 service/return games won, winners, forced/unforced errors, points with unknown winner
-(left out). Serve stats only count points with serve
+(left out), points replayed (Let point; the replayed attempt's serves are not counted, as
+in official stats — agreed with the owner). Serve stats only count points with serve
 marks; shot stats only count marked shots.
 
 ## 13. Future (keep the format ready)

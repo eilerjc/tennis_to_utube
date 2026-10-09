@@ -25,7 +25,7 @@ def test_invalid_keys(bad):
 def test_agreed_default_layout():
     sc = default_shortcuts()
     expect = {
-        "A": "point_a", "S": "point_b", "D": "point_unknown",
+        "A": "point_a", "S": "point_b", "D": "point_unknown", "F": "let_point",
         "Q": "serve_in", "W": "fault", "E": "let", "R": "ace",
         "G": "game_start", "Shift+G": "game_start_other_server",
         "Z": "game_end_a", "X": "game_end_b", "C": "game_end_unknown",
@@ -68,9 +68,9 @@ def test_buttons_show_player_names():
 
 
 def test_user_binding_takes_key_from_default():
-    sc = apply_overrides({"point_a": "W", "fault": ["Shift+F", "F"], "note": ""})
+    sc = apply_overrides({"point_a": "W", "fault": ["Shift+V", "V"], "note": ""})
     assert sc.keys_for("point_a") == ("W",)
-    assert sc.keys_for("fault") == ("Shift+F", "F")
+    assert sc.keys_for("fault") == ("Shift+V", "V")
     assert sc.keys_for("note") == ()
     assert sc.action_for("A") is None  # point_a moved away from A
     assert sc.warnings == []  # fault was rebound too, so W is free

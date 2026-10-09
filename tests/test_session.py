@@ -208,6 +208,20 @@ def test_call_after_a_serve_changes_that_serve(tmp_path):
     assert [e.type for e in s.mf.events].count("serve_in") == 0
 
 
+def test_let_point_then_a_first_serve_again(tmp_path):
+    s = session(tmp_path)
+    s.set_server(500, "Emma")
+    s.mark("game_start", 1000)
+    s.mark("serve_in", 2000)
+    s.mark("fault", 3000)  # first serve: fault
+    s.mark("serve_in", 5000)  # second serve in, rally interrupted
+    lp = s.mark("let_point", 9000)
+    assert lp.type == "let_point" and lp.t_ms == 9000
+    assert not s.flow_at(9500).serve_pending
+    assert s.mark("fault", 10_000).t_ms == 10_000  # no serve waiting: its own mark...
+    assert s.flow_at(10_500).score.points == (0, 0)  # ...and a first-serve fault, not a double
+
+
 def test_call_without_a_waiting_serve_is_its_own_mark(tmp_path):
     s = session(tmp_path)
     s.mark("game_start", 1000)

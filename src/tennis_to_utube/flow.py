@@ -50,7 +50,7 @@ class Flow:
 
 # Marks that belong to a point (the latest one tells whether a serve is waiting for its call).
 _POINT_MARKS = frozenset({catalog.POINT, catalog.ACE, catalog.FAULT, catalog.SERVE_IN,
-                          catalog.LET, *SHOT_TYPES})
+                          catalog.LET, catalog.LET_POINT, *SHOT_TYPES})
 
 
 def flow_at(analysis: Analysis, match: dict[str, Any], t_ms: int,

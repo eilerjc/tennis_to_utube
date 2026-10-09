@@ -133,6 +133,14 @@ def test_serve_then_the_call(window):
     assert not page.buttons.buttons["fault"].styleSheet()
 
 
+def test_let_point_button_and_key(window):
+    page = window.mark
+    assert page.buttons.buttons["let_point"].text().splitlines() == ["Let point", "[F]"]
+    page.player.seek(3_000)
+    page.actions["let_point"].trigger()
+    assert page.session.event(page.selected_id).type == "let_point"
+
+
 def test_reaction_offset_while_playing(window):
     page = window.mark
     page.player.seek(10_000)

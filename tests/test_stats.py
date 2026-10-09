@@ -77,6 +77,20 @@ def test_unknown_points_counted_separately():
     assert t[("Match", "Points with unknown winner (not counted)")][0] == "1"
 
 
+def test_let_point_serves_do_not_count():
+    mf = hand_match()
+    t = 100_000
+    for type_ in ("game_start", "fault", "serve_in", "let_point", "serve_in"):
+        t += 1000
+        mf.add_event(t, type_, **({"side": "A", "player": "Emma"} if type_ == "game_start" else {}))
+    mf.add_event(t + 1000, "point", result="A")  # won on a first serve (the replay's)
+    _, table_ = table(mf)
+    assert table_[("Match", "1st serve in")][0] == "3/5 (60%)"  # was 2/4: +1 first serve in
+    assert table_[("Match", "1st serve points won")][0] == "3/3 (100%)"
+    assert table_[("Match", "Points replayed (let point; serves not counted)")][0] == "1"
+    assert table_[("Set 1", "Points replayed (let point; serves not counted)")][0] == "1"
+
+
 def test_doubles_by_server():
     mf = hand_match()
     mf.match["kind"] = "doubles"

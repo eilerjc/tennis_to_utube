@@ -28,7 +28,8 @@ SERVE_CALL_WINDOW_MS = 6000
 _SERVE_CALLS = (catalog.FAULT, catalog.LET, catalog.ACE)
 # Marks that belong to a point: the latest one before a shot press decides whether the shot
 # describes the last Point (a serve mark means a new point has started).
-_POINT_MARKS = (catalog.POINT, catalog.ACE, catalog.FAULT, catalog.SERVE_IN, catalog.LET, *SHOT_TYPES)
+_POINT_MARKS = (catalog.POINT, catalog.ACE, catalog.FAULT, catalog.SERVE_IN, catalog.LET,
+                catalog.LET_POINT, *SHOT_TYPES)
 
 
 class LockedError(RuntimeError):

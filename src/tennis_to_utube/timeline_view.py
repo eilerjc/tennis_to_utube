@@ -10,7 +10,7 @@ from .matchfile import Event
 
 # Tick categories (colours are chosen by the GUI).
 CATEGORIES = {
-    catalog.POINT: "point",
+    catalog.POINT: "point", catalog.LET_POINT: "point",
     catalog.SERVE_IN: "serve", catalog.FAULT: "serve", catalog.LET: "serve", catalog.ACE: "serve",
     catalog.WINNER: "shot", catalog.FORCED_ERROR: "shot", catalog.UNFORCED_ERROR: "shot",
     catalog.GOOD_RECOVERY: "coaching", catalog.FOOTWORK: "coaching",
