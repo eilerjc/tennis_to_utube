@@ -5,3 +5,6 @@ __pycache__/
 build/
 dist/
 .venv/
+
+# libmpv for playback, placed next to run.bat (see README)
+libmpv-2.dll

@@ -1,6 +1,7 @@
 """The real mpv player, headless (vo=null): seeks and frame steps land on the right frames
 of a two-file joined timeline. Skipped without libmpv."""
 
+import importlib.util
 import math
 import time
 from fractions import Fraction
@@ -10,6 +11,10 @@ import pytest
 from synth import BITS, FRAME_MS, make_clip
 
 pytestmark = [pytest.mark.gui, pytest.mark.ffmpeg]
+if importlib.util.find_spec("PySide6"):
+    from tennis_to_utube.gui.player import _add_dll_dirs
+
+    _add_dll_dirs()  # load libmpv-2.dll next to run.bat, like the app, not another one on PATH
 mpv = pytest.importorskip("mpv", exc_type=(ImportError, OSError))
 pytest.importorskip("PIL")
 
