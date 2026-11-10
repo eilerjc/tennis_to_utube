@@ -72,7 +72,7 @@ def normalize_key(text: str) -> str:
 class Action:
     id: str
     label: str  # "{A}" / "{B}": the side's short names (names.short_side_names)
-    group: str  # "point" | "serve" | "game" | "set" | "coaching" | "match" | "player" | "edit"
+    group: str  # "point" | "serve" | "game" | "set" | "coaching" | "match" | "player" | "edit" | "cut"
     keys: tuple[str, ...] = ()  # default keys
     event_type: str | None = None  # event actions: the type they log ...
     result: str | None = None  # ... and its result
@@ -149,6 +149,9 @@ ACTIONS: tuple[Action, ...] = (
     Action("nudge_forward", "Move event 1 frame forward", "edit", ("Alt+Right",)),
     Action("delete_event", "Delete event", "edit", ("Delete",)),
     Action("lock_events", "Lock events", "edit", ("Ctrl+L",)),
+    # Cut only (DESIGN.md §12b): a part to remove, from I to O
+    Action("cut_start", "Start removal", "cut", ("I",)),
+    Action("cut_end", "End removal", "cut", ("O",)),
 )
 ACTIONS_BY_ID = {a.id: a for a in ACTIONS}
 

@@ -1,4 +1,5 @@
-"""Main window: the four steps of the workflow (Files → Mark → Trim → Export)."""
+"""Main window: the four steps of the workflow (Files → Mark → Trim → Export), or Files →
+Cut for Cut only (DESIGN.md §12b)."""
 
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from ..appstate import AppState, save_state
 from ..config import Config
 from ..matchfile import MatchFile
 from ..shortcuts import Shortcuts, default_shortcuts
+from .cut_page import CutPage
 from .export_page import ExportPage
 from .files_page import FilesPage
 from .mark_page import MarkPage
@@ -38,15 +40,20 @@ class MainWindow(QMainWindow):
         self.mark = MarkPage(config, shortcuts, player_factory)
         self.trim = TrimPage(config)
         self.export = ExportPage(config)
+        self.cut = CutPage(config, shortcuts, player_factory)
         self.steps = QTabWidget()
         self.steps.setDocumentMode(True)
         for label, page in (("1  Files", self.files), ("2  Mark", self.mark),
-                            ("3  Trim", self.trim), ("4  Export", self.export)):
+                            ("3  Trim", self.trim), ("4  Export", self.export),
+                            ("2  Cut", self.cut)):
             self.steps.addTab(page, label)
         self.setCentralWidget(self.steps)
         self._set_match_steps_enabled(False)
+        self.steps.setTabVisible(self.CUT_TAB, False)
 
         self.files.matchReady.connect(self.open_match)
+        self.files.cutReady.connect(self.open_cut)
+        self.cut.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
         self.mark.message.connect(lambda text: self.statusBar().showMessage(text, 5000))
         self.trim.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
         self.trim.changed.connect(self.mark.external_change)
@@ -58,9 +65,32 @@ class MainWindow(QMainWindow):
         if warnings:
             self.statusBar().showMessage("  |  ".join(warnings), 30000)
 
+    MATCH_TABS = (1, 2, 3)
+    CUT_TAB = 4
+
     def _set_match_steps_enabled(self, enabled: bool) -> None:
-        for i in (1, 2, 3):
+        for i in self.MATCH_TABS:
             self.steps.setTabEnabled(i, enabled)
+
+    def _show_mode(self, cut: bool) -> None:
+        """Cut only shows Files → Cut; a match shows Files → Mark → Trim → Export."""
+        for i in self.MATCH_TABS:
+            self.steps.setTabVisible(i, not cut)
+        self.steps.setTabVisible(self.CUT_TAB, cut)
+
+    def open_cut(self, infos) -> None:
+        """Cut only: the videos (MediaInfo, in order) go to the Cut step."""
+        if not self.cut.confirm_discard():
+            return
+        self.mark.save()
+        self.mark.player.set_paused(True)
+        self.match_path = None
+        self.setWindowTitle(f"{APP_TITLE} — Cut only")
+        self._show_mode(cut=True)
+        self.cut.load(infos)
+        self.steps.setCurrentWidget(self.cut)
+        self.statusBar().showMessage(
+            f"Cut only: {len(infos)} video{'s' * (len(infos) != 1)} — mark the parts to remove", 8000)
 
     @property
     def match(self) -> MatchFile | None:
@@ -68,6 +98,10 @@ class MainWindow(QMainWindow):
         return self.mark.match
 
     def open_match(self, mf: MatchFile, path: Path) -> None:
+        if not self.cut.confirm_discard():
+            return
+        self.cut.player.set_paused(True)
+        self._show_mode(cut=False)
         self.match_path = Path(path)
         self.setWindowTitle(f"{APP_TITLE} — {self.match_path.name}")
         self._set_match_steps_enabled(True)
@@ -85,6 +119,8 @@ class MainWindow(QMainWindow):
             self.export.refresh()
         if page is self.mark:
             self.mark.setFocus()  # so the keys work straight away
+        if page is self.cut:
+            self.cut.setFocus()
         self.mark.save()
 
     def _show_time(self, t_ms: int) -> None:
@@ -117,8 +153,12 @@ class MainWindow(QMainWindow):
             pass  # a convenience only
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if not self.cut.confirm_discard():
+            event.ignore()
+            return
         self.remember_geometry()
         self.files.shutdown()
         self.trim.shutdown()
         self.mark.shutdown()
+        self.cut.shutdown()
         super().closeEvent(event)
