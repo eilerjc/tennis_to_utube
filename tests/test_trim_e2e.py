@@ -226,3 +226,9 @@ def test_progress_and_cancel(tmp_path):
     with pytest.raises(TrimError, match="cancelled"):
         run_trim(plan, [clip], tmp_path / "cancelled.mp4", cancel=cancel)
     assert not (tmp_path / "cancelled.mp4").exists()
+    # a video already there survives a cancelled run, and nothing partial is left behind
+    old = (tmp_path / "out.mp4").read_bytes()
+    with pytest.raises(TrimError, match="cancelled"):
+        run_trim(plan, [clip], tmp_path / "out.mp4", cancel=cancel)
+    assert (tmp_path / "out.mp4").read_bytes() == old
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["GX010001.MP4", "out.mp4"]

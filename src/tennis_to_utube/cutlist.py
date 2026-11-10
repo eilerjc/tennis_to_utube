@@ -115,9 +115,18 @@ def default_output(first: MediaInfo) -> Path:
     return first.path.with_name(when.strftime("%Y-%m-%d_%H%M%S") + ".mp4")
 
 
+def not_removed(plan: TrimPlan, removals: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    """The removals the plan could not make at all: a kept part resumes at a keyframe, so
+    a removal with no keyframe inside it (shorter than the gap between two) removes nothing."""
+    gone = plan.removed
+    return [(s, e) for s, e in removals
+            if not any(min(e, g.end) > max(s, g.start) for g in gone)]
+
+
 @dataclass
 class Made:
     result: TrimResult
+    not_removed: list[tuple[int, int]] = field(default_factory=list)  # too short to cut
 
     @property
     def plan(self) -> TrimPlan:
@@ -132,6 +141,15 @@ class Made:
                      "~1 s earlier than marked")
         return text
 
+    def warning(self) -> str:
+        """What the user asked for and did not get, or ""."""
+        if not self.not_removed:
+            return ""
+        parts = ", ".join(f"{clock_text(s)} – {clock_text(e)}" for s, e in self.not_removed)
+        one = len(self.not_removed) == 1
+        return (f"NOT removed, too short to cut without re-encoding (no keyframe inside): "
+                f"{parts}. Make {'it' if one else 'them'} longer to cut {'it' if one else 'them'}.")
+
 
 def make_video(infos: Sequence[MediaInfo], cut_list: CutList, output: Path, tools: Tools,
                report: Report = lambda f, t: None,
@@ -139,7 +157,10 @@ def make_video(infos: Sequence[MediaInfo], cut_list: CutList, output: Path, tool
     """Write the joined videos without the removals (stream copy, no re-encode)."""
     paths = [i.path for i in infos]
     durations = [i.duration_ms for i in infos]
+    removals = list(cut_list.removals)  # as they are now: the list may be edited meanwhile
     cuts = cut_list.cuts()
+    if cuts and cut_list.kept_ms <= 0:
+        raise ValueError("the parts to remove cover the whole video: nothing would be left")
     keyframes = None
     if cuts:
         report(-1, "Finding keyframes…")
@@ -149,4 +170,4 @@ def make_video(infos: Sequence[MediaInfo], cut_list: CutList, output: Path, tool
     report(0.0, "Writing video…")
     result = run_trim(plan, paths, output, tools, cancel=cancel,
                       progress=lambda f: report(f, f"Writing video… {f:.0%}"))
-    return Made(result)
+    return Made(result, not_removed(result.plan, removals))

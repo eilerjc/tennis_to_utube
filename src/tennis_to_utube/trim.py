@@ -532,10 +532,14 @@ def run_trim(plan: TrimPlan, paths: Sequence[str | os.PathLike[str]], output: st
 
     ``progress`` receives 0..1 while ffmpeg runs; setting ``cancel`` stops it (the partial
     output is deleted and TrimError("cancelled") is raised).
+
+    The video is written as ``<name>.part.mp4`` and moved into place once ffmpeg has
+    finished, so a video already at ``output`` survives a cancelled or failed run.
     """
     output = Path(output)
+    partial = output.with_name(f"{output.stem}.part{output.suffix}")
     sources = [Path(p).resolve() for p in paths]
-    if output.resolve() in sources:
+    if output.resolve() in sources or partial.resolve() in sources:
         raise TrimError("output would overwrite a source file")
     first = probe(sources[0], tools)
     if not plan.is_identity and not allow_open_gop:
@@ -550,13 +554,19 @@ def run_trim(plan: TrimPlan, paths: Sequence[str | os.PathLike[str]], output: st
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(concat_script(plan, paths))
     try:
-        stderr = _run_ffmpeg(ffmpeg_command(tools, list_path, output, first.codec),
+        stderr = _run_ffmpeg(ffmpeg_command(tools, list_path, partial, first.codec),
                              plan.total_out_ms, progress, cancel)
     except TrimError:
-        output.unlink(missing_ok=True)
+        partial.unlink(missing_ok=True)
         raise
     finally:
         os.unlink(list_path)
+    try:
+        os.replace(partial, output)
+    except OSError as exc:  # e.g. the old video is open in a player (Windows)
+        raise TrimError(f"the video was made as {partial.name}, but {output.name} could not "
+                        f"be replaced ({exc.strerror or exc}); close it and rename the file "
+                        "yourself") from exc
 
     issues = _ffmpeg_issues(stderr)
     info = probe(output, tools)

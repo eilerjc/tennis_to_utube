@@ -63,6 +63,8 @@ cuts from the beginning); it is shaded on the timeline and listed on the right (
 removes one, `Ctrl+Z` undoes). Then **Make
 video**: named after when the first video was recorded (`2026-10-04_165207.mp4`), lossless, in about the time it takes to copy the files.
 With no parts marked it just joins the files. Nothing is saved but the video.
+A part can only be cut where the camera stored a full picture (about every 0.5–1 s), so a
+very short part cannot be removed: the result tells you which ones were left in.
 
 ## Statistics
 

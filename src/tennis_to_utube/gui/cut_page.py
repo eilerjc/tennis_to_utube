@@ -351,27 +351,50 @@ class CutPage(QWidget):
         answer = QMessageBox.question(self, "Replace video?", f"{path.name} exists. Replace it?")
         return answer == QMessageBox.StandardButton.Yes
 
+    def is_making(self) -> bool:
+        return self.job is not None
+
+    def tell_making(self) -> None:
+        """Other videos cannot be opened while one is being made."""
+        QMessageBox.information(self, "A video is being made",
+                                "Wait for the video to be made, or cancel it, first.")
+
+    def confirm_stop_making(self) -> bool:
+        """Ask before closing while a video is being made (it would be cancelled)."""
+        if not self.is_making():
+            return True
+        answer = QMessageBox.question(
+            self, "Stop making the video?",
+            "A video is being made. Stop it and close? The unfinished video is deleted.")
+        return answer == QMessageBox.StandardButton.Yes
+
     def make(self) -> None:
         if not self.infos or self.job is not None:
-            return
-        text = self.output_edit.text().strip()
-        if not text:
-            self.message.emit("Choose where to save the video")
-            return
-        output = Path(text)
-        if output.suffix.lower() != ".mp4":
-            output = output.with_suffix(".mp4")
-        if output.resolve() in {i.path.resolve() for i in self.infos}:
-            self.status.setText("That is one of the source videos; choose another name.")
-            return
-        if output.exists() and not self.confirm_overwrite(output):
             return
         if self.cut_list.pending_start is not None:
             self.status.setText("A removal was started but not ended: press End removal, or "
                                 "Delete to clear it.")
             return
-        infos, cut_list = list(self.infos), self.cut_list
-        removals = list(cut_list.removals)
+        if self.cut_list.removals and self.cut_list.kept_ms <= 0:
+            self.status.setText("The parts to remove cover the whole video: nothing would be "
+                                "left. Delete one first.")
+            return
+        text = self.output_edit.text().strip()
+        if not text:
+            self.status.setText("Choose where to save the video.")
+            return
+        output = Path(text)
+        if output.suffix.lower() != ".mp4":  # add it: "my.video" is a name, not an extension
+            output = output.with_name(output.name + ".mp4")
+            self.output_edit.setText(str(output))
+        if output.resolve() in {i.path.resolve() for i in self.infos}:
+            self.status.setText("That is one of the source videos; choose another name.")
+            return
+        if output.exists() and not self.confirm_overwrite(output):
+            return
+        # A copy: the removals can still be edited while the video is being made.
+        removals = list(self.cut_list.removals)
+        infos, cut_list = list(self.infos), CutList(self.cut_list.total_ms, list(removals))
         tools = Tools.from_config(self.config)
         cancel = threading.Event()
 
@@ -419,8 +442,10 @@ class CutPage(QWidget):
         self._finish_job()
         self.made_removals = removals
         problems = [i.message for i in made.result.issues if i.severity != "info"]
-        self.status.setText(made.summary() + ("\n" + "\n".join(problems) if problems else ""))
-        self.message.emit(made.summary())
+        if made.warning():
+            problems.insert(0, made.warning())
+        self.status.setText("\n".join([made.summary()] + problems))
+        self.message.emit(made.warning() or made.summary())
 
     def _on_failed(self, error: str) -> None:
         self._finish_job()

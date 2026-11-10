@@ -93,3 +93,24 @@ def test_make_video_joins_and_removes(tmp_path):
     assert frames == [n for n in range(1200) if not (180 <= n < 300 or 720 <= n < 780)]
     assert round(180 * FRAME_MS) == 3003 and round(300 * FRAME_MS) == 5005
     assert "kept" in made.summary()
+
+
+@pytest.mark.ffmpeg
+def test_too_short_removals_are_reported_and_the_whole_video_is_refused(tmp_path):
+    a = make_clip(tmp_path / "GX010042.MP4", 600, 0, data_track=False)  # keyframe every ~1 s
+    infos = [probe(a)]
+    total = infos[0].duration_ms
+    cl = CutList(total)
+    cl.add(3_100, 3_600)  # no keyframe inside: cannot be cut without re-encoding
+    cl.add(6_000, 8_000)
+    made = make_video(infos, cl, tmp_path / "cut.mp4", Tools())
+    assert made.not_removed == [(3_100, 3_600)]
+    assert "NOT removed" in made.warning() and "0:00:03.100" in made.warning()
+    frames = [n for _, n in read_frames(made.result.output)]
+    assert 200 in frames and 400 not in frames
+    everything = CutList(total)
+    everything.add(0, total)
+    with pytest.raises(ValueError, match="whole video"):
+        make_video(infos, everything, tmp_path / "none.mp4", Tools())
+    assert not (tmp_path / "none.mp4").exists()
+    assert make_video(infos, CutList(total), tmp_path / "join.mp4", Tools()).warning() == ""

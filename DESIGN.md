@@ -316,7 +316,9 @@ video (`output`: plan, path, the trimmed video's YouTube id). Outputs next to th
 file: `<match> trimmed.mp4`, `<match> trimmed chapters.txt`, `<match> trimmed links.md`
 and `.csv`. `--links-only` rewrites chapters and links for the made video (after pasting
 its YouTube id). Run from the GUI it reports progress on stdout and stops on "cancel" on
-stdin (the partial video is deleted).
+stdin (the partial video is deleted). The video is written as `<name>.part.mp4` and moved
+into place when ffmpeg has finished, so a video already there survives a cancelled or
+failed run (Trim tool and Cut only alike).
 
 - User picks removal rules; app lists the resulting cuts; user can untick any:
   - everything before the first Game start / Match start (warmup),
@@ -507,6 +509,14 @@ lossless planner), but a mode of its own.
   the Files list shows the same), else the file's modified time. Save as / Browse; a
   source is refused, an existing file needs confirming. Progress, Cancel
   (the partial file is deleted); the result says how much was kept.
+  - A removal with no keyframe inside it (shorter than the gap between two, ~0.5–1 s on
+    the GoPro) cannot be made without re-encoding: the video is made without it and the
+    result says so, listing each one ("NOT removed … make it longer").
+  - Refused before starting: a removal started but not ended; removals covering the
+    whole video.
+  - While a video is being made the removals can still be edited (the video uses them as
+    they were when Make video was pressed); other videos or a match cannot be opened, and
+    closing the app asks first (it cancels the video).
 - Code: `cutlist` (pure: the parts, undo, making the video) and `gui/cut_page`.
 
 ## 13. Future (keep the format ready)

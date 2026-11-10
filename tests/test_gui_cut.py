@@ -146,3 +146,44 @@ def test_cut_bat_opens_the_videos_in_order(qapp, window, folder):
     assert open_cut_videos(window, paths, Tools())
     assert [i.path.name for i in window.cut.infos] == ["GX010042.MP4", "GX020042.MP4"]
     assert window.steps.currentWidget() is window.cut
+
+
+def test_make_checks_and_too_short_removal(qapp, window, folder):
+    w = window
+    w.files.go_to(folder)
+    pump(qapp, lambda: len(w.files._selected_infos()) == 2)
+    w.files.cut_only()
+    cut = w.cut
+    asked = []
+    cut.confirm_overwrite = lambda path: asked.append(path) or True
+    (folder / "2026-10-04_165207.mp4").write_bytes(b"old")
+    # an unfinished removal is reported before asking to replace anything
+    cut.player.seek(3_100)
+    cut.actions["cut_start"].trigger()
+    cut.make()
+    assert cut.job is None and not asked and "not ended" in cut.status.text()
+    cut.player.seek(3_600)
+    cut.actions["cut_end"].trigger()
+    # everything removed: refused
+    cut.cut_list.add(0, cut.cut_list.total_ms)
+    cut.make()
+    assert cut.job is None and not asked and "whole video" in cut.status.text()
+    cut.cut_list.undo()
+    # a dot in the name is not an extension
+    cut.output_edit.setText(str(folder / "my.video"))
+    cut.make()
+    assert cut.output_edit.text() == str(folder / "my.video.mp4")
+    # while it is being made: no other videos, closing asks, edits do not reach the video
+    told = []
+    cut.tell_making = lambda: told.append(True)
+    assert cut.is_making()
+    cut.cut_list.add(10_000, 12_000)
+    w.open_cut(cut.infos)
+    assert told == [True] and len(cut.cut_list.removals) == 2  # not reloaded
+    cut.confirm_stop_making = lambda: False
+    assert not w.close()
+    cut.confirm_stop_making = lambda: True
+    pump(qapp, lambda: cut.job is None)
+    assert "NOT removed" in cut.status.text() and "0:00:03.100" in cut.status.text()
+    assert len(read_frames(folder / "my.video.mp4")) == 1200  # the later edit is not in it
+    assert cut.has_unmade_work()

@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
 
     def open_cut(self, infos) -> None:
         """Cut only: the videos (MediaInfo, in order) go to the Cut step."""
-        if not self.cut.confirm_discard():
+        if self._cut_is_making() or not self.cut.confirm_discard():
             return
         self.mark.save()
         self.mark.player.set_paused(True)
@@ -97,8 +97,17 @@ class MainWindow(QMainWindow):
         """The open match (owned by the Mark step's session)."""
         return self.mark.match
 
+    def _cut_is_making(self) -> bool:
+        """True (after showing the Cut step and saying so) while Cut only is making a video:
+        loading other videos now would mix the two up."""
+        if not self.cut.is_making():
+            return False
+        self.steps.setCurrentWidget(self.cut)
+        self.cut.tell_making()
+        return True
+
     def open_match(self, mf: MatchFile, path: Path) -> None:
-        if not self.cut.confirm_discard():
+        if self._cut_is_making() or not self.cut.confirm_discard():
             return
         self.cut.player.set_paused(True)
         self._show_mode(cut=False)
@@ -153,7 +162,7 @@ class MainWindow(QMainWindow):
             pass  # a convenience only
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
-        if not self.cut.confirm_discard():
+        if not self.cut.confirm_stop_making() or not self.cut.confirm_discard():
             event.ignore()
             return
         self.remember_geometry()
