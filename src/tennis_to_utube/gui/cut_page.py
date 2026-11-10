@@ -198,7 +198,7 @@ class CutPage(QWidget):
         names = ", ".join(i.path.name for i in self.infos)
         self.files_label.setText(f"<b>{len(self.infos)} video{'s' * (len(self.infos) != 1)}</b>"
                                  f" joined in order: {names} ({playback.clock_text(total)})")
-        self.output_edit.setText(str(default_output(self.infos[0].path)) if self.infos else "")
+        self.output_edit.setText(str(default_output(self.infos[0])) if self.infos else "")
         self.status.setText("Mark the parts to remove, or make the video as it is to just "
                             "join the files.")
         self.refresh()

@@ -51,8 +51,24 @@ def test_delete_undo_redo_and_lookup():
     assert not cl.redo()
 
 
-def test_default_output(tmp_path):
-    assert default_output(tmp_path / "GX010042.MP4") == tmp_path / "GX010042 cut.mp4"
+def test_default_output_is_named_after_the_recording_time(tmp_path):
+    import dataclasses
+    import os
+    from datetime import datetime, timezone
+
+    from tennis_to_utube.probe import MediaInfo
+
+    video = tmp_path / "GX010042.MP4"
+    video.write_bytes(b"")
+    info = MediaInfo(video, 1000, "hevc", None, 320, 180, "60000/1001", "yuvj420p", 0, 1,
+                     0, datetime(2026, 10, 4, 16, 52, 7, tzinfo=timezone.utc), None, None)
+    # the camera's clock as written (GoPro: local time labelled UTC), not converted
+    assert default_output(info) == tmp_path / "2026-10-04_165207.mp4"
+    # no recording time: the file's modified time
+    stamp = datetime(2026, 11, 9, 8, 5, 3).timestamp()
+    os.utime(video, (stamp, stamp))
+    no_time = dataclasses.replace(info, creation_time=None)
+    assert default_output(no_time) == tmp_path / "2026-11-09_080503.mp4"
 
 
 @pytest.mark.ffmpeg

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -100,8 +101,18 @@ class CutList:
         self._redo.clear()
 
 
-def default_output(first_source: Path) -> Path:
-    return first_source.with_name(f"{first_source.stem} cut.mp4")
+def default_output(first: MediaInfo) -> Path:
+    """``YYYY-MM-DD_HHMMSS.mp4`` next to the first video, from when it was recorded: its
+    ``creation_time`` as the camera wrote it (a GoPro writes its local clock time, labelled
+    UTC, so it is not converted — the same as the Files list shows), else the file's
+    modified time."""
+    when = first.creation_time
+    if when is None:
+        try:
+            when = datetime.fromtimestamp(first.path.stat().st_mtime)
+        except OSError:
+            return first.path.with_name(f"{first.path.stem} cut.mp4")
+    return first.path.with_name(when.strftime("%Y-%m-%d_%H%M%S") + ".mp4")
 
 
 @dataclass

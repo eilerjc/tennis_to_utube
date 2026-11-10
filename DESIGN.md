@@ -501,8 +501,11 @@ lossless planner), but a mode of its own.
 - **Make video:** same planner and ffmpeg run as the Trim tool (§9) — stream copy, closed
   GOPs required, removal starts exact on footage without B-frames (keyframe on footage
   with), kept parts resume at the keyframe at or before a removal's end (so up to ~1 s
-  more is kept with the GoPro). Default `<first video> cut.mp4` next to the videos (Save
-  as / Browse; a source is refused, an existing file needs confirming). Progress, Cancel
+  more is kept with the GoPro). Default name: when the first video was recorded,
+  `YYYY-MM-DD_HHMMSS.mp4` (owner's choice), next to the videos — its `creation_time` as
+  the camera wrote it (a GoPro writes local time labelled UTC, so it is not converted;
+  the Files list shows the same), else the file's modified time. Save as / Browse; a
+  source is refused, an existing file needs confirming. Progress, Cancel
   (the partial file is deleted); the result says how much was kept.
 - Code: `cutlist` (pure: the parts, undo, making the video) and `gui/cut_page`.
 

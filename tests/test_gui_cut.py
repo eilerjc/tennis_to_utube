@@ -1,6 +1,8 @@
 """Cut only through the GUI: Files → Cut → Make video (offscreen, real ffmpeg, stand-in player)."""
 
+import os
 import time
+from datetime import datetime
 
 import pytest
 
@@ -39,8 +41,11 @@ def window(qapp, config_dir):
 def folder(tmp_path):
     d = tmp_path / "practice"
     d.mkdir()
-    make_clip(d / "GX010042.MP4", 600, 0, data_track=False)  # ~10 s
+    first = make_clip(d / "GX010042.MP4", 600, 0, data_track=False)  # ~10 s
     make_clip(d / "GX020042.MP4", 600, 600, data_track=False)
+    # (synthetic clips carry no recording time: the output is named after the modified time)
+    stamp = datetime(2026, 10, 4, 16, 52, 7).timestamp()
+    os.utime(first, (stamp, stamp))
     return d
 
 
@@ -53,7 +58,7 @@ def test_files_cut_make(qapp, window, folder):
     assert w.steps.currentWidget() is cut and w.steps.isTabVisible(w.CUT_TAB)
     assert not any(w.steps.isTabVisible(i) for i in w.MATCH_TABS)
     assert cut.cut_list.total_ms == 20_020
-    assert cut.output_edit.text().endswith("GX010042 cut.mp4")
+    assert cut.output_edit.text() == str(folder / "2026-10-04_165207.mp4")
     assert not cut.has_unmade_work()
 
     # I … O at the playhead; the timeline shades it
@@ -88,8 +93,8 @@ def test_files_cut_make(qapp, window, folder):
 
     cut.make()
     pump(qapp, lambda: cut.job is None)
-    out = folder / "GX010042 cut.mp4"
-    assert out.exists() and cut.status.text().startswith("Made GX010042 cut.mp4")
+    out = folder / "2026-10-04_165207.mp4"
+    assert out.exists() and cut.status.text().startswith("Made 2026-10-04_165207.mp4")
     frames = [n for _, n in read_frames(out)]
     assert frames == [n for n in range(1200) if not (180 <= n < 300 or 720 <= n < 780)]
     assert not cut.has_unmade_work()  # made with these removals
@@ -104,7 +109,7 @@ def test_making_again_asks_before_replacing(qapp, window, folder):
     pump(qapp, lambda: len(w.files._selected_infos()) == 2)
     w.files.cut_only()
     cut = w.cut
-    out = folder / "GX010042 cut.mp4"
+    out = folder / "2026-10-04_165207.mp4"
     out.write_bytes(b"old")
     asked = []
     cut.confirm_overwrite = lambda path: asked.append(path) or False
