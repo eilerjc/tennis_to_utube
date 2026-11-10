@@ -39,6 +39,7 @@ def test_agreed_default_layout():
         "Up": "prev_event", "Down": "next_event",
         "Ctrl+Z": "undo", "Ctrl+Y": "redo", "Alt+Left": "nudge_back", "Alt+Right": "nudge_forward",
         "Delete": "delete_event", "Ctrl+L": "lock_events",
+        "I": "cut_start", "O": "cut_end",
     }
     assert {k: sc.action_for(k).id for k in expect} == expect
     # every key used once, every default already canonical

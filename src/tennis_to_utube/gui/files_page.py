@@ -90,6 +90,7 @@ class _Scanner(QObject):
 
 class FilesPage(QWidget):
     matchReady = Signal(object, object)  # (MatchFile, Path to the match file)
+    cutReady = Signal(list)  # MediaInfo of the ticked videos, in order (Cut only)
     _probeRequest = Signal(int, list)
     _scanRequest = Signal(int, list)
 
@@ -214,6 +215,13 @@ class FilesPage(QWidget):
         row.addLayout(side_buttons)
         files_layout.addLayout(row)
         files_layout.addWidget(self.notes)
+        self.cut_button = QPushButton("Cut only (no tennis)…")
+        self.cut_button.setToolTip("Just remove parts of the ticked videos and join them "
+                                   "(lossless); no players, score or chapters")
+        cut_row = QHBoxLayout()
+        cut_row.addStretch(1)
+        cut_row.addWidget(self.cut_button)
+        files_layout.addLayout(cut_row)
 
         # Match setup
         self.singles = QRadioButton("Singles")
@@ -296,6 +304,7 @@ class FilesPage(QWidget):
         self.move_down.clicked.connect(lambda: self._move(1))
         self.doubles.toggled.connect(self._update_kind)
         self.create_button.clicked.connect(self.create_match)
+        self.cut_button.clicked.connect(self.cut_only)
         self._update_kind()
         self._refresh_quick()
 
@@ -627,12 +636,13 @@ class FilesPage(QWidget):
             for i, edit in enumerate(self.names[side]):
                 edit.setPlaceholderText(f"Player {base + i + 1}")
 
-    def create_match(self) -> Path | None:
+    def _ticked_infos(self, what: str) -> list[MediaInfo] | None:
+        """The ticked videos, read and joinable; None (after telling the user) if not."""
         if self.folder is None:
             return None
         chosen = [p for p in self.order if p in self.ticked]
         if not chosen:
-            QMessageBox.information(self, "No videos", "Tick the videos of this match first.")
+            QMessageBox.information(self, "No videos", f"Tick the videos {what} first.")
             return None
         not_ready = [p.name for p in chosen if not isinstance(self.infos.get(p), MediaInfo)]
         if not_ready:
@@ -645,7 +655,20 @@ class FilesPage(QWidget):
             QMessageBox.warning(self, "Cannot join losslessly",
                                 "\n".join(i.message for i in errors))
             return None
-        path = matchfile.default_match_path(chosen[0])
+        return infos
+
+    def cut_only(self) -> list[MediaInfo] | None:
+        """Cut only: the ticked videos go to the Cut step (no match file)."""
+        infos = self._ticked_infos("to cut")
+        if infos is not None:
+            self.cutReady.emit(infos)
+        return infos
+
+    def create_match(self) -> Path | None:
+        infos = self._ticked_infos("of this match")
+        if infos is None:
+            return None
+        path = matchfile.default_match_path(infos[0].path)
         if path.exists():
             answer = QMessageBox.question(
                 self, "Match exists", f"{path.name} already exists. Open it instead?")

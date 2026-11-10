@@ -59,6 +59,7 @@ user config dir:
 | Marker (GUI) | `run.bat` | `config.toml` (playback, keys, names, scoring, full-video links) | Files → Mark → Trim → Export |
 | Trim tool | `trim.bat` / `python -m tennis_to_utube.trimtool` | `trim.toml` (what is cut, serve lead-in, the trimmed video's link lead-ins and chapter gap, output name) | makes the trimmed video; writes the trimmed video's chapters and links |
 | Stats | `stats.bat` / `python -m tennis_to_utube.stats` | — | CSV statistics (§12a) |
+| Cut only (in the GUI) | `cut.bat` (drop videos on it), or **Cut only** on Files | — | remove parts of any videos and join them, losslessly; nothing tennis (§12b) |
 | Overlay (future) | `overlay.bat` | `overlay.toml` | burned-in scoreboard (re-encode) |
 
 The Marker's **Trim** screen stays: it lists the cuts (rules and lead-ins from `trim.toml`,
@@ -439,6 +440,7 @@ Every button with a key shows it on a second line, e.g. `Play / Pause` over `[Sp
   | `Alt+←` `Alt+→` | Move selected event one frame |
   | `Delete` (or right-click) | Delete selected event |
   | `Ctrl+L` | Lock events |
+  | `I` / `O` | Cut only (§12b): start / end a part to remove |
 
   Mouse: wheel on the timeline zooms; click jumps/selects; drag scrubs; Ctrl+drag moves an
   event; right-click an event to edit/delete.
@@ -473,6 +475,35 @@ won (tiebreak points won on return) and lost (tiebreak points lost on serve),
 service/return games won, winners, forced/unforced errors, points with unknown winner
 (left out). Serve stats only count points with serve
 marks; shot stats only count marked shots.
+
+## 12b. Cut only (no tennis)
+
+Agreed with the owner (2026-11-09): a way to just trim and join video, with none of the
+scoring or tennis parts. Part of this program (it reuses the player, timeline and the
+lossless planner), but a mode of its own.
+
+- **Workflow:** load one video, or several joined in order, then **mark the parts to
+  remove**, then make the video. Start it with **Cut only (no tennis)…** on the Files step
+  (the ticked videos, same ordering and join check as a match), or drop videos on
+  **`cut.bat`** (`python -m tennis_to_utube --cut video…`; put in GoPro order). The steps
+  become **1 Files → 2 Cut**; opening a match brings back Mark / Trim / Export.
+- **Cut screen:** the Mark screen's player, transport, speed and timeline (overview +
+  zoomable strip). `I` starts a part to remove at the playhead, `O` ends it (shaded on the
+  timeline, also while being marked; marked backwards is fine; overlapping or touching
+  parts merge). The parts are listed (from, to, length); a click jumps there. `Delete`
+  removes the selected part (or the one the playhead is in, or a started one), `Ctrl+Z` /
+  `Ctrl+Y` undo/redo, `↑` `↓` jump to the previous/next part edge. No parts at all just
+  joins the files.
+- **One shot, nothing saved** (owner's choice): the parts live in memory only. Opening
+  other videos or a match, or closing the app, asks first if parts were marked that no
+  video was made with.
+- **Make video:** same planner and ffmpeg run as the Trim tool (§9) — stream copy, closed
+  GOPs required, removal starts exact on footage without B-frames (keyframe on footage
+  with), kept parts resume at the keyframe at or before a removal's end (so up to ~1 s
+  more is kept with the GoPro). Default `<first video> cut.mp4` next to the videos (Save
+  as / Browse; a source is refused, an existing file needs confirming). Progress, Cancel
+  (the partial file is deleted); the result says how much was kept.
+- Code: `cutlist` (pure: the parts, undo, making the video) and `gui/cut_page`.
 
 ## 13. Future (keep the format ready)
 
