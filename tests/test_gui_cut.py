@@ -76,6 +76,11 @@ def test_files_cut_make(qapp, window, folder):
     assert cut.cut_list.removals == [(3_000, 6_000)]
     cut.actions["undo"].trigger()
     assert len(cut.cut_list.removals) == 2
+    # End removal with no start: from the beginning of the video
+    cut.player.seek(1_000)
+    cut.actions["cut_end"].trigger()
+    assert cut.cut_list.removals[0] == (0, 1_000)
+    cut.actions["undo"].trigger()
     # previous/next removal edge
     cut.player.seek(7_000)
     cut.actions["next_event"].trigger()

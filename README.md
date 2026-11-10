@@ -58,8 +58,9 @@ the trimmed video's link lead-ins — are in `trim.toml` (see `docs\trim.example
 
 To just cut parts out of videos and join them — any videos, nothing tennis — drop them on
 **`cut.bat`** (or tick them on the Files step and press **Cut only (no tennis)…**). Play
-through and press `I` where a part to remove starts and `O` where it ends; it is shaded on
-the timeline and listed on the right (`Delete` removes one, `Ctrl+Z` undoes). Then **Make
+through and press `I` where a part to remove starts and `O` where it ends (`O` on its own
+cuts from the beginning); it is shaded on the timeline and listed on the right (`Delete`
+removes one, `Ctrl+Z` undoes). Then **Make
 video**: `<first video> cut.mp4`, lossless, in about the time it takes to copy the files.
 With no parts marked it just joins the files. Nothing is saved but the video.
 

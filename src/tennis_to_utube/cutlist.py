@@ -36,11 +36,11 @@ class CutList:
         self.pending_start = self._clamp(t_ms)
 
     def end(self, t_ms: int) -> tuple[int, int] | None:
-        """Close the removal begun with :meth:`start`; None if there is none or it is empty.
-        Marks given the wrong way round are swapped; overlapping removals merge."""
-        if self.pending_start is None:
-            return None
-        a, b = sorted((self.pending_start, self._clamp(t_ms)))
+        """Close the removal begun with :meth:`start` — or, with none begun, remove from the
+        beginning of the video. None if it is empty. Marks given the wrong way round are
+        swapped; overlapping removals merge."""
+        start = self.pending_start if self.pending_start is not None else 0
+        a, b = sorted((start, self._clamp(t_ms)))
         self.pending_start = None
         if b <= a:
             return None

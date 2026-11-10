@@ -490,7 +490,8 @@ lossless planner), but a mode of its own.
 - **Cut screen:** the Mark screen's player, transport, speed and timeline (overview +
   zoomable strip). `I` starts a part to remove at the playhead, `O` ends it (shaded on the
   timeline, also while being marked; marked backwards is fine; overlapping or touching
-  parts merge). The parts are listed (from, to, length); a click jumps there. `Delete`
+  parts merge). `O` with no `I` before it removes from the beginning of the video (owner's
+  choice). The parts are listed (from, to, length); a click jumps there. `Delete`
   removes the selected part (or the one the playhead is in, or a started one), `Ctrl+Z` /
   `Ctrl+Y` undo/redo, `↑` `↓` jump to the previous/next part edge. No parts at all just
   joins the files.

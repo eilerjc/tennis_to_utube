@@ -233,13 +233,13 @@ class CutPage(QWidget):
     def end_removal(self) -> None:
         if not self.infos:
             return
-        if self.cut_list.pending_start is None:
-            self.message.emit("Press Start removal at the beginning of the part first")
-            return
+        from_start = self.cut_list.pending_start is None  # no start: from the beginning
         added = self.cut_list.end(self.position())
         self.refresh()
         if added is None:
             self.message.emit("Nothing removed: the end is where it started")
+        elif from_start:
+            self.message.emit(f"Removing the beginning, up to {playback.clock_text(added[1])}")
         else:
             self.message.emit(f"Removing {playback.clock_text(added[0])} – "
                               f"{playback.clock_text(added[1])}")

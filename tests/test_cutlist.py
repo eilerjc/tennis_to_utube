@@ -9,7 +9,9 @@ from tennis_to_utube.probe import Tools, probe
 
 def test_start_end_marks_a_removal():
     cl = CutList(60_000)
-    assert cl.end(5_000) is None  # no start yet
+    assert cl.end(5_000) == (0, 5_000)  # no start: from the beginning of the video
+    cl.delete(0)
+    assert cl.end(0) is None  # nothing to remove
     cl.start(10_000)
     assert cl.end(20_000) == (10_000, 20_000) and cl.pending_start is None
     cl.start(40_000)
