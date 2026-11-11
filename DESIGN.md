@@ -60,6 +60,7 @@ user config dir:
 | Trim tool | `trim.bat` / `python -m tennis_to_utube.trimtool` | `trim.toml` (what is cut, serve lead-in, the trimmed video's link lead-ins and chapter gap, output name) | makes the trimmed video; writes the trimmed video's chapters and links |
 | Stats | `stats.bat` / `python -m tennis_to_utube.stats` | — | CSV statistics (§12a) |
 | Cut only (in the GUI) | `cut.bat` (drop videos on it), or **Cut only** on Files | — | remove parts of any videos and join them, losslessly; nothing tennis (§12b) |
+| Upload (in the GUI, and a tool) | **Upload** step, or `upload.bat` / `python -m tennis_to_utube.uploadtool` | `upload.toml` (Google client id, chunk size, parallel uploads, defaults) | uploads any video to YouTube, resumably (§12c) |
 | Overlay (future) | `overlay.bat` | `overlay.toml` | burned-in scoreboard (re-encode) |
 
 The Marker's **Trim** screen stays: it lists the cuts (rules and lead-ins from `trim.toml`,
@@ -304,8 +305,8 @@ may say "won"/"lost"/"?" but all store the same type.
 - **Lead-in:** link/chapter time = event time − lead-in (default **5 s**, configurable per
   event type, e.g. ace 3–4 s, rally winner 8–10 s). Clamped to ≥ 0 and to the start of the
   kept segment (never reaches into removed footage). Rounded **down** to whole seconds.
-- Video ID is pasted after upload; links regenerate from stored offsets.
-- Upload is done by the user in the browser for now (YouTube API upload is future work).
+- Video ID is pasted after upload — or filled in by the uploader (§12c) when the video was
+  uploaded from the app; links regenerate from stored offsets.
 
 ## 9. Trim pass (after marking) — the Trim tool
 
@@ -519,12 +520,108 @@ lossless planner), but a mode of its own.
     closing the app asks first (it cancels the video).
 - Code: `cutlist` (pure: the parts, undo, making the video) and `gui/cut_page`.
 
+## 12c. Upload to YouTube
+
+Agreed with the owner (2026-11): a native uploader for **any video** — a trimmed match, a
+Cut only result, files straight from the camera — built so that an interrupted upload of a
+20 GB file never starts again. Standard library only (no new dependencies).
+
+**Rules**
+
+- Google's official **YouTube Data API v3**, **OAuth 2.0**, the official **resumable
+  upload protocol**. No browser automation.
+- The file is sent **as it is**: nothing is re-encoded, and source videos are only read.
+- An upload is **never restarted from zero silently**. If it cannot be resumed (YouTube no
+  longer has the session — they run out after about a week — or the file changed), it
+  fails and waits; only **Restart from the beginning**, confirmed by the user, restarts it.
+- "Done" has two steps that are shown apart: **Uploaded** (YouTube confirmed it has the
+  whole file and gave a video id) and **Complete** (YouTube finished processing).
+- **Made for kids** is never guessed: it must be chosen (or set in `upload.toml`).
+
+**Account** (`ytapi`). The owner's own Google Cloud OAuth client ("Desktop app";
+`docs/UPLOAD_SETUP.md`), its id and secret in `upload.toml`. Sign-in opens Google's page
+in the browser; the code comes back to a loopback address on the PC (PKCE). The password
+is never seen. Tokens are kept in `youtube_token.bin`, encrypted for the Windows user
+(DPAPI), refreshed as needed; **Disconnect** deletes them and asks Google to revoke. The
+Upload step shows the connected channel. Scopes: `youtube.upload` and `youtube` (playlist,
+processing state).
+
+**One upload** (`ytupload`). Open a session (the video's details go with it), send the
+file in chunks (`chunk_mb`, default 16; a multiple of 256 KiB), each answered with the
+bytes YouTube has: the **checkpoint**. On a network error, timeout or 5xx/429: wait
+(2 s, doubling to 60 s, with jitter, for as long as it takes), then **ask the session how
+many bytes it has** and continue from exactly there — also when only part of a chunk
+arrived. An expired access token is renewed; a withdrawn sign-in fails with "connect
+again, then Retry" and keeps its place. Daily-quota errors say so and keep their place.
+
+**The queue** (`uploadqueue`): one JSON file per upload in `<config dir>/uploads/` —
+details, session, confirmed bytes, counters — rewritten atomically (temporary file, fsync,
+rename) at every checkpoint. So after a crash, a closed app or a Windows restart the queue
+is as it was: what was uploading goes back to Queued and resumes from its checkpoint when
+the app (or the Upload tool) next starts. Records of finished uploads are kept (Remove
+only hides them). A file's size and modified time are remembered: a changed file is not
+silently continued. One process owns the queue at a time (lock file). `Manager` is the
+reusable service used by the GUI and the tool:
+
+- **Parallel uploads**, selectable 1–4, **default 2** (owner's choice); the rest wait in
+  order and start automatically. Pause / Resume per upload, Pause all.
+- After the transfer it polls `videos.list` (`processing.poll_s`): Processing (with
+  YouTube's progress when given) → Complete, or Failed with YouTube's reason. It adds the
+  video to the chosen playlist, and notes when YouTube's privacy differs from what was
+  asked (unaudited API projects get their uploads locked to Private).
+- Keeps Windows awake while uploading (`prevent_sleep`, a tick box). Uploads run on
+  background threads, also while the window is minimized.
+- Log: `uploads/upload.log` (rotating).
+
+Statuses: Queued, Uploading, Paused, Reconnecting, Resuming, Uploaded, Processing,
+Complete, Failed.
+
+**4K.** The API reports "processed" but not which resolutions are ready; the page says
+that HD/4K versions can appear hours later and does not claim "4K ready".
+
+**Upload step** (`gui/upload_page`, always visible, also in Cut only): the account row;
+the dashboard table — file, title, size, done %, speed now and average (Mbps), time left,
+status, last checkpoint (bytes and time), YouTube link; buttons Add videos, Add a game,
+Pause, Resume, Retry, Restart from the beginning, Remove, Open on YouTube, Copy link,
+Pause all; a total bar. For the selected upload: what its status means, errors, and
+**diagnostics** — speed now/average, time uploading, bytes sent / confirmed / remaining,
+retries, connection interruptions, time spent reconnecting — with a one-line reading
+(interruptions vs. plain upload speed), to tell a dropping connection from a slow one.
+Closing the app while uploading asks first (nothing is lost).
+
+**Getting videos in:** *Upload to YouTube…* on **Files** (the ticked videos, each its own
+video), on **Cut** (the video just made), on **Trim** (the trimmed video) and on **Export**
+(the full recording, when it is one file); *Add videos…* / *Add a game…* on the Upload
+step; or `upload.bat`. A dialog then asks for the details, with defaults from
+`upload.toml`: privacy **Unlisted**, category **Sports**, tags, playlist, made for kids.
+
+**Presets** (`uploadpresets`; all proposals are editable):
+
+- *File names* — any video.
+- *Game* (basketball etc.; naming only, no scoring): teams and date typed once; the files
+  in order become "Team A vs Team B - First Half", "- Second Half", then "- Overtime",
+  "- Overtime 2" (one file: "Full Game"; the part is editable per file); description =
+  teams, date, part, plus notes.
+- *Tennis match* — title "A vs B - date"; description = the match summary (players, set
+  scores, winner), the date and the video's chapters. When the upload is through, the video
+  id is **put into the match** (the trimmed video's id, with its links rewritten, or the
+  full recording's) — unless another trimmed video was made in the meantime.
+
+**Upload tool** (`uploadtool`, `upload.bat`): `--connect`, `--disconnect`, `--status`,
+`--run` (carry on with the queue), or videos with `--title` / `--game A B` / `--date` /
+`--privacy` / `--playlist` / `--tags` / `--kids yes|no` (required unless set in
+`upload.toml`). Same queue and engine as the GUI.
+
+**Tests:** a stand-in for Google on localhost (`tests/fake_youtube.py`: OAuth, the
+resumable protocol, `videos.list`) that drops connections mid-chunk, loses answers, keeps
+partial chunks, returns 5xx, forgets sessions and expires sign-ins. **Not yet tried
+against the real YouTube** (the owner's Google project comes later).
+
 ## 13. Future (keep the format ready)
 
 - AI-generated events (`source: "ai"`, confidence) into the same log, with a review queue;
   human corrections override but keep the AI's original. Human logs double as labeled data.
 - Burned-in scoreboard export (NVENC re-encode), showing full player names.
-- YouTube API upload.
 - Coaching filters across a match or season ("all close misses long on the backhand").
 - Rally/dead-time auto-detection (deferred; not needed for whole-match review).
 

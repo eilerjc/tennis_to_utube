@@ -19,7 +19,8 @@ chapters and per-event links. See `DESIGN.md` for the agreed design.
 4. Double-click **`run.bat`**. The first start creates `.venv` and installs what is needed.
 
 Settings can be overridden in `%APPDATA%\tennis_to_utube\`: `config.toml` (the app),
-`shortcuts.toml` (keys) and `trim.toml` (the Trim tool — copy `docs\trim.example.toml`);
+`shortcuts.toml` (keys), `trim.toml` (the Trim tool — copy `docs\trim.example.toml`) and
+`upload.toml` (YouTube uploads — `docs\upload.example.toml`);
 see `src/tennis_to_utube/config.py` and `shortcuts.py`.
 
 ## Using it
@@ -65,6 +66,31 @@ video**: named after when the first video was recorded (`2026-10-04_165207.mp4`)
 With no parts marked it just joins the files. Nothing is saved but the video.
 A part can only be cut where the camera stored a full picture (about every 0.5–1 s), so a
 very short part cannot be removed: the result tells you which ones were left in.
+
+## Upload to YouTube
+
+The **Upload** step uploads any video straight from the PC — a trimmed match, a Cut only
+video, files from the camera — and survives bad internet: it sends the file in pieces,
+and after a lost connection, a closed app or a Windows restart it carries on from the last
+piece YouTube confirmed, never from the start. One-time setup: `docs\UPLOAD_SETUP.md`
+(your own free Google client id), then **Connect to YouTube…**.
+
+- Get videos in with **Upload to YouTube…** on Files (ticked videos), Cut, Trim and Export,
+  or **Add videos… / Add a game…** on the Upload step. A game's files are named
+  "Team A vs Team B - First Half", "- Second Half", … from the teams you type once.
+- Defaults: Unlisted, Sports; title, description, tags and playlist are editable, and you
+  must say whether the video is made for kids.
+- Two uploads run at once by default; the rest wait. Pause, resume, retry per video.
+- The table shows progress, speed (Mbps), time left, the last checkpoint and the link.
+  **Uploaded** means YouTube has the whole file; **Complete** means it has finished
+  processing (4K versions can appear later still).
+- Diagnostics show interruptions, retries and time spent reconnecting, to tell a dropping
+  connection from a slow one. Log: `%APPDATA%\tennis_to_utube\uploads\upload.log`.
+- A match's trimmed video (or full recording) gets its YouTube link filled in by itself.
+
+Also from the command line: `upload.bat --connect`, then drop videos on `upload.bat`
+(`--game "Hawks" "Owls" --kids no`); `upload.bat --run` carries on with the queue.
+Settings: `upload.toml` (copy `docs\upload.example.toml`).
 
 ## Statistics
 

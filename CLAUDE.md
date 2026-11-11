@@ -11,6 +11,8 @@ update `DESIGN.md` in the same change.
 - Target is the owner's **Windows** PC (Git Bash available). Development/testing here is on
   Linux, so keep core logic GUI-free and testable; the owner verifies the GUI on Windows.
 - Never re-encode video for trim/join. Stream copy only.
+- Uploads: never restart an upload from zero without the user asking; never claim a video
+  is done before YouTube confirms it. Tests use `tests/fake_youtube.py`, never the real API.
 - Commit in small steps on feature branches and push often; open PRs into `main`.
 
 ## Layout
@@ -24,10 +26,15 @@ update `DESIGN.md` in the same change.
   with mpv), `timeline_view` (bands, zoom), `appstate` (remembered folders), `cutlist` (Cut
   only: parts to remove, undo, making the video; no tennis). Separate tools (own
   config, no GUI): `trimtool` (makes the trimmed video + its chapters/links; `trim.toml`;
-  the GUI's Trim step runs it as a process), `stats` (CSV statistics).
+  the GUI's Trim step runs it as a process), `stats` (CSV statistics). YouTube upload
+  (DESIGN.md §12c; standard library only, `upload.toml`): `ytapi` (OAuth sign-in, token
+  store, Data API calls), `ytupload` (one resumable upload), `uploadqueue` (jobs on disk,
+  the `Manager` service: parallel uploads, pause/resume, processing follow-up),
+  `uploadpresets` (titles/descriptions: file, game, tennis match), `uploadtool` (command
+  line; `upload.bat`).
 - `src/tennis_to_utube/gui/` — PySide6: `app` (entry; `--cut video…`), `main_window` (four
   steps, or Files → Cut), `files_page`, `mark_page` (+ `player`, `event_panel`,
-  `timeline_bar`, `lists`, `actions`), `trim_page`, `export_page`, `cut_page` (Cut only),
+  `timeline_bar`, `lists`, `actions`), `trim_page`, `export_page`, `cut_page` (Cut only), `upload_page` (Upload: account, queue dashboard, diagnostics),
   `worker` (background jobs). Keep logic in the
   core modules; GUI code only wires it up.
 - `tests/` — pytest. Synthetic-video tests generate small HEVC files with ffmpeg that

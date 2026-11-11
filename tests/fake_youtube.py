@@ -231,7 +231,7 @@ class FakeYouTube:
         with self.lock:
             video_id = session.get("video_id")
             if video_id is None:
-                video_id = session["video_id"] = self._next("vid")
+                video_id = session["video_id"] = self._next("video") [5:].rjust(8, "0").join(("vid", ""))
                 self.videos[video_id] = {"data": session["data"], "body": session["body"],
                                          "polls": 0}
         self.send(h, 200, {"kind": "youtube#video", "id": video_id,

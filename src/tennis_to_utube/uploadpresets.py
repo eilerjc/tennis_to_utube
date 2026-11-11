@@ -65,8 +65,10 @@ def game_title(team_a: str, team_b: str, part: str = "") -> str:
 
 
 def game_description(team_a: str, team_b: str, date: str, part: str = "", notes: str = "") -> str:
-    lines = [game_title(team_a, team_b), date.strip(), part.strip(), "", notes.strip()]
-    return fit_description("\n".join(lines[:3]).strip() + ("\n\n" + notes.strip() if notes.strip() else ""))
+    lines = [line for line in (game_title(team_a, team_b), date.strip(), part.strip()) if line]
+    if notes.strip():
+        lines += ["", notes.strip()]
+    return fit_description("\n".join(lines))
 
 
 def game_details(count: int, team_a: str, team_b: str, date: str,
