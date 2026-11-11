@@ -71,6 +71,46 @@ TRIM_DEFAULTS: dict[str, Any] = {
     "output": {"name": "{stem} trimmed.mp4"},
 }
 
+# upload.toml — the YouTube uploader (DESIGN.md §12c).
+UPLOAD_CONFIG_FILENAME = "upload.toml"
+UPLOAD_DEFAULTS: dict[str, Any] = {
+    # The owner's own Google Cloud OAuth client ("Desktop app"): docs/UPLOAD_SETUP.md.
+    "google": {
+        "client_id": "",
+        "client_secret": "",
+        # "youtube" is needed to add a video to a playlist and to read its processing state.
+        "scopes": ["https://www.googleapis.com/auth/youtube.upload",
+                   "https://www.googleapis.com/auth/youtube"],
+        "auth_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "revoke_uri": "https://oauth2.googleapis.com/revoke",
+        "api_base": "https://www.googleapis.com/youtube/v3",
+        "upload_base": "https://www.googleapis.com/upload/youtube/v3",
+    },
+    # Sent in pieces of this size; each confirmed piece is a checkpoint to resume from.
+    "chunk_mb": 16.0,
+    # Uploads running at the same time.
+    "parallel": 2,
+    # Keep Windows from sleeping while uploads are running.
+    "prevent_sleep": True,
+    "retry": {
+        "first_s": 2.0,  # wait after the first failure; doubles each time ...
+        "max_s": 60.0,  # ... up to this
+        "timeout_s": 60.0,  # no data moving for this long = connection lost
+    },
+    # After the transfer: ask YouTube this often whether the video has been processed.
+    "processing": {"poll_s": 30.0},
+    # What a new upload starts with (all editable per video).
+    "defaults": {
+        "privacy": "unlisted",  # private | unlisted | public
+        "category": "17",  # 17 = Sports
+        "tags": [],
+        "playlist": "",  # playlist id, or "" for none
+        # "" = ask every time (YouTube requires an explicit answer); "yes" or "no".
+        "made_for_kids": "",
+    },
+}
+
 # Tables whose keys are open-ended (one entry per event type). New keys are accepted
 # if their value has the same type as the table's "default" entry.
 _OPEN_TABLES = {("lead_in_ms",)}
@@ -125,6 +165,11 @@ def load_config(path: Path | None = None, *, defaults: dict[str, Any] = DEFAULTS
 def load_trim_config(path: Path | None = None) -> Config:
     """The Trim tool's settings: TRIM_DEFAULTS plus ``<user config dir>/trim.toml``."""
     return load_config(path, defaults=TRIM_DEFAULTS, filename=TRIM_CONFIG_FILENAME)
+
+
+def load_upload_config(path: Path | None = None) -> Config:
+    """The uploader's settings: UPLOAD_DEFAULTS plus ``<user config dir>/upload.toml``."""
+    return load_config(path, defaults=UPLOAD_DEFAULTS, filename=UPLOAD_CONFIG_FILENAME)
 
 
 def _type_ok(default: Any, value: Any) -> bool:
