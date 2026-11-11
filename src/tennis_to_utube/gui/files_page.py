@@ -91,6 +91,7 @@ class _Scanner(QObject):
 class FilesPage(QWidget):
     matchReady = Signal(object, object)  # (MatchFile, Path to the match file)
     cutReady = Signal(list)  # MediaInfo of the ticked videos, in order (Cut only)
+    uploadRequested = Signal(list)  # Paths of the ticked videos: upload them as they are
     _probeRequest = Signal(int, list)
     _scanRequest = Signal(int, list)
 
@@ -218,8 +219,12 @@ class FilesPage(QWidget):
         self.cut_button = QPushButton("Cut only (no tennis)…")
         self.cut_button.setToolTip("Just remove parts of the ticked videos and join them "
                                    "(lossless); no players, score or chapters")
+        self.upload_button = QPushButton("Upload to YouTube…")
+        self.upload_button.setToolTip("Upload the ticked videos as they are (each one its own "
+                                      "YouTube video)")
         cut_row = QHBoxLayout()
         cut_row.addStretch(1)
+        cut_row.addWidget(self.upload_button)
         cut_row.addWidget(self.cut_button)
         files_layout.addLayout(cut_row)
 
@@ -305,6 +310,7 @@ class FilesPage(QWidget):
         self.doubles.toggled.connect(self._update_kind)
         self.create_button.clicked.connect(self.create_match)
         self.cut_button.clicked.connect(self.cut_only)
+        self.upload_button.clicked.connect(self.upload_ticked)
         self._update_kind()
         self._refresh_quick()
 
@@ -656,6 +662,15 @@ class FilesPage(QWidget):
                                 "\n".join(i.message for i in errors))
             return None
         return infos
+
+    def upload_ticked(self) -> list[Path]:
+        """Upload: the ticked videos as they are (no need for them to be joinable)."""
+        chosen = [p for p in self.order if p in self.ticked]
+        if not chosen:
+            QMessageBox.information(self, "No videos", "Tick the videos to upload first.")
+            return []
+        self.uploadRequested.emit(chosen)
+        return chosen
 
     def cut_only(self) -> list[MediaInfo] | None:
         """Cut only: the ticked videos go to the Cut step (no match file)."""

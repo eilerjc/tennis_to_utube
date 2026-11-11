@@ -28,6 +28,7 @@ from .worker import Job
 
 class CutPage(QWidget):
     message = Signal(str)  # for the status bar
+    uploadRequested = Signal(object)  # Path of the made video: upload it to YouTube
 
     def __init__(self, config: Config, shortcuts: Shortcuts,
                  player_factory: Callable[[QWidget | None], PlayerBase] = create_player,
@@ -91,6 +92,10 @@ class CutPage(QWidget):
         self.make_button.setMinimumHeight(48)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setVisible(False)
+        self.made_path: Path | None = None
+        self.upload_button = QPushButton("Upload to YouTube…")
+        self.upload_button.setToolTip("Upload the video just made")
+        self.upload_button.setEnabled(False)
         self.progress = QProgressBar()
         self.progress.setVisible(False)
         self.status = QLabel()
@@ -101,6 +106,7 @@ class CutPage(QWidget):
         make_row = QHBoxLayout()
         make_row.addWidget(self.make_button, 1)
         make_row.addWidget(self.cancel_button)
+        make_row.addWidget(self.upload_button)
         output = QGroupBox("Make video (lossless: no re-encoding)")
         o_layout = QVBoxLayout(output)
         o_layout.addWidget(QLabel("Save as"))
@@ -184,6 +190,8 @@ class CutPage(QWidget):
         self.browse_button.clicked.connect(self._browse)
         self.make_button.clicked.connect(self.make)
         self.cancel_button.clicked.connect(self.cancel)
+        self.upload_button.clicked.connect(
+            lambda *_: self.made_path is not None and self.uploadRequested.emit(self.made_path))
 
     # -- videos ------------------------------------------------------------------------
 
@@ -192,6 +200,8 @@ class CutPage(QWidget):
         total = sum(i.duration_ms for i in self.infos)
         self.cut_list = CutList(total)
         self.made_removals = None
+        self.made_path = None
+        self.upload_button.setEnabled(False)
         self.player.load([i.path for i in self.infos], [i.duration_ms for i in self.infos],
                          self.infos[0].fps if self.infos else None)
         self.player.set_speed(1.0)
@@ -441,6 +451,8 @@ class CutPage(QWidget):
     def _on_done(self, made: Made, removals: list[tuple[int, int]]) -> None:
         self._finish_job()
         self.made_removals = removals
+        self.made_path = made.result.output
+        self.upload_button.setEnabled(True)
         problems = [i.message for i in made.result.issues if i.severity != "info"]
         if made.warning():
             problems.insert(0, made.warning())

@@ -1,0 +1,39 @@
+# Uploader settings. Copy to %APPDATA%\tennis_to_utube\upload.toml and keep only the lines
+# you want to change (everything else uses these defaults).
+
+# Videos are sent in pieces of this size (MB). Each confirmed piece is a checkpoint: after
+# an interruption the upload continues from the last one. 8 to 16 is a good range; smaller
+# loses less on a bad connection, larger has slightly less overhead on a good one.
+chunk_mb = 16
+
+# How many videos upload at the same time (the Upload step can change it, 1 to 4).
+# More is not faster when your internet connection is the limit.
+parallel = 2
+
+# Keep Windows from going to sleep while uploads are running (the screen may still turn off).
+prevent_sleep = true
+
+# Your own Google Cloud OAuth client ("Desktop app"). See docs/UPLOAD_SETUP.md.
+[google]
+client_id = ""
+client_secret = ""
+
+# After a lost connection or a server error: wait first_s, then twice as long each time,
+# up to max_s, for as long as it takes. No data moving for timeout_s counts as lost.
+[retry]
+first_s = 2.0
+max_s = 60.0
+timeout_s = 60.0
+
+# After the transfer: how often YouTube is asked whether the video has been processed.
+[processing]
+poll_s = 30.0
+
+# What a new upload starts with. Everything can be changed per video before it is queued.
+[defaults]
+privacy = "unlisted"     # private | unlisted | public
+category = "17"          # 17 = Sports
+tags = []
+playlist = ""            # a playlist id, or "" for none
+# YouTube requires an answer for every video. "" asks each time; "no" or "yes" pre-selects it.
+made_for_kids = ""

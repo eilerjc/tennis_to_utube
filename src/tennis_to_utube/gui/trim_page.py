@@ -41,6 +41,7 @@ class TrimPage(QWidget):
     showTime = Signal(int)  # jump to a time on the Mark step
     changed = Signal()  # the match changed (rules, cuts, output)
     message = Signal(str)
+    uploadRequested = Signal()  # upload the trimmed video to YouTube
 
     def __init__(self, config: Config, parent: QWidget | None = None):
         super().__init__(parent)
@@ -118,12 +119,17 @@ class TrimPage(QWidget):
         self.chapters.setMaximumHeight(160)
         self.copy_button = QPushButton("Copy chapters")
         self.copy_button.clicked.connect(lambda *_: self.copy_chapters())
+        self.upload_button = QPushButton("Upload to YouTube…")
+        self.upload_button.setToolTip("Upload the trimmed video; its link is filled in here "
+                                      "when the upload is through")
+        self.upload_button.clicked.connect(lambda *_: self.uploadRequested.emit())
         self.files_note = QLabel()
         self.files_note.setWordWrap(True)
         self.files_note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         trimmed = QGroupBox("Trimmed video on YouTube")
         t_layout = QVBoxLayout(trimmed)
         vid_row = QHBoxLayout()
+        vid_row.addWidget(self.upload_button)
         vid_row.addWidget(self.video, 1)
         vid_row.addWidget(self.video_note)
         t_layout.addLayout(vid_row)

@@ -27,18 +27,24 @@ def links_paths(match_path: Path) -> tuple[Path, Path]:
 class ExportPage(QWidget):
     changed = Signal()
     message = Signal(str)
+    uploadRequested = Signal()  # upload the full recording to YouTube
 
     def __init__(self, config: Config, parent: QWidget | None = None):
         super().__init__(parent)
         self.config = config
         self.session: Session | None = None
         self.export: Export | None = None
+        self.upload_button = QPushButton("Upload to YouTube…")
+        self.upload_button.setToolTip("Upload the full recording (when it is one file); its "
+                                      "link is filled in here when the upload is through")
+        self.upload_button.clicked.connect(lambda *_: self.uploadRequested.emit())
 
         self.video = QLineEdit()
         self.video.setPlaceholderText("Paste the full recording's YouTube link or video id after uploading")
         self.video.editingFinished.connect(self._video_entered)
         self.video_note = QLabel()
         id_row = QHBoxLayout()
+        id_row.addWidget(self.upload_button)
         id_row.addWidget(QLabel("YouTube video:"))
         id_row.addWidget(self.video, 1)
         id_row.addWidget(self.video_note)
